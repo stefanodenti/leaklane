@@ -237,7 +237,7 @@ nav a:hover {
 }
 
 .page-frame {
-  width: min(1440px, 100%);
+  width: min(1680px, 100%);
   padding: 28px;
 }
 
@@ -1087,8 +1087,8 @@ textarea {
 
 .repo-map-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.34fr);
-  gap: 18px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
   align-items: start;
 }
 
@@ -1117,7 +1117,30 @@ textarea {
 .commit-graph {
   display: block;
   min-width: 100%;
-  height: 360px;
+  height: 540px;
+}
+
+.lane-guide {
+  stroke: color-mix(in srgb, var(--line) 82%, transparent);
+  stroke-width: 1;
+}
+
+.lane-guide.default-lane {
+  stroke: color-mix(in srgb, var(--accent) 38%, var(--line));
+  stroke-width: 1.5;
+}
+
+.lane-name {
+  fill: color-mix(in srgb, var(--muted) 72%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.66rem;
+  font-weight: 760;
+  pointer-events: none;
+  text-transform: uppercase;
+}
+
+.lane-name.default-lane {
+  fill: var(--accent-ink);
 }
 
 .graph-edge {
@@ -1205,8 +1228,14 @@ textarea {
 }
 
 .map-detail-panel {
-  position: sticky;
-  top: 28px;
+  position: static;
+}
+
+.selection-inspector {
+  border-top: 2px solid color-mix(in srgb, var(--accent) 38%, var(--line));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 7%, transparent), transparent 42%),
+    var(--surface);
 }
 
 .detail-stack {

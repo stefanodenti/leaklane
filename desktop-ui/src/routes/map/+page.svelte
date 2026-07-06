@@ -43,6 +43,9 @@
   let isDragging = false;
   let dragStartX = 0;
   let dragScrollLeft = 0;
+  let laneMap = new Map<string, number>();
+
+  const graphLanes = [0, 1, 2, 3, 4];
 
   async function loadJobs() {
     loadingJobs = true;
@@ -65,9 +68,11 @@
     selected = null;
     try {
       repoMap = await getRepositoryMap(selectedUrl, refresh);
+      laneMap = buildLaneMap(repoMap);
       selected = repoMap.commits[0] ? { type: 'commit', item: repoMap.commits[0] } : null;
     } catch (err) {
       repoMap = null;
+      laneMap = new Map();
       mapError = err instanceof Error ? err.message : 'Errore generazione mappa repository';
     } finally {
       loadingMap = false;
@@ -103,6 +108,7 @@
     selectedUrl = url;
     repoMap = null;
     selected = null;
+    laneMap = new Map();
     mapError = '';
   }
 
@@ -114,14 +120,59 @@
     return 72 + index * 92;
   }
 
+  function graphHeight() {
+    return 520;
+  }
+
+  function buildLaneMap(map: RepositoryMap) {
+    const next = new Map<string, number>();
+    const commitIndexByHash = new Map(map.commits.map((commit, index) => [commit.hash, index]));
+    const commitByFullHash = new Map(map.commits.map((commit) => [commit.hash, commit]));
+    const defaultBranch = map.branches.find((branch) => branch.is_default) || map.branches[0];
+    const sideLanes = [0, 4, 1, 3];
+
+    function walk(head: string | undefined, lane: number, overwrite = false) {
+      let current = head;
+      let guard = 0;
+      while (current && guard < map.commits.length) {
+        const commit = commitByFullHash.get(current);
+        if (!commit) break;
+        if (overwrite || !next.has(commit.hash)) {
+          next.set(commit.hash, lane);
+        }
+        current = commit.parents[0];
+        guard += 1;
+      }
+    }
+
+    if (defaultBranch) {
+      walk(defaultBranch.commit, 2, true);
+    }
+
+    map.branches
+      .filter((branch) => !branch.is_default && commitIndexByHash.has(branch.commit))
+      .slice(0, sideLanes.length)
+      .forEach((branch, index) => walk(branch.commit, sideLanes[index]));
+
+    for (const commit of map.commits) {
+      if (!next.has(commit.hash)) {
+        next.set(commit.hash, commit.parents.length > 1 ? 2 : 1 + (commitIndexByHash.get(commit.hash) || 0) % 3);
+      }
+    }
+
+    return next;
+  }
+
   function commitLane(commit: RepositoryMapCommit, index: number) {
-    if (commit.parents.length > 1) return 2;
-    const marker = Number.parseInt(commit.hash.slice(-2), 16);
-    return Number.isFinite(marker) ? marker % 3 : index % 3;
+    return laneMap.get(commit.hash) ?? (commit.parents.length > 1 ? 2 : index % graphLanes.length);
   }
 
   function commitY(commit: RepositoryMapCommit, index: number) {
-    return 92 + commitLane(commit, index) * 74;
+    return laneY(commitLane(commit, index));
+  }
+
+  function laneY(lane: number) {
+    return 94 + lane * 78;
   }
 
   function commitIndex(hash: string, map: RepositoryMap) {
@@ -316,10 +367,23 @@
               <svg
                 class="commit-graph"
                 style={`width: ${graphWidth(repoMap) * zoom}px;`}
-                viewBox={`0 0 ${graphWidth(repoMap)} 360`}
+                viewBox={`0 0 ${graphWidth(repoMap)} ${graphHeight()}`}
                 role="img"
               >
                 <title>Commit graph for {repoMap.repository.name}</title>
+                {#each graphLanes as lane}
+                  <line
+                    class:default-lane={lane === 2}
+                    class="lane-guide"
+                    x1="36"
+                    y1={laneY(lane)}
+                    x2={graphWidth(repoMap) - 40}
+                    y2={laneY(lane)}
+                  />
+                  <text class:default-lane={lane === 2} class="lane-name" x="38" y={laneY(lane) - 12}>
+                    {lane === 2 ? 'main lane' : `lane ${lane + 1}`}
+                  </text>
+                {/each}
                 {#each repoMap.commits as commit, index}
                   {#each commit.parents as parent}
                     {@const parentIndex = commitIndex(parent, repoMap)}
@@ -340,8 +404,8 @@
                   {#each repoMap.tags as tag, index}
                     {@const tagIndex = commitIndex(tag.commit, repoMap)}
                     {#if tagIndex >= 0}
-                      <line class="tag-line" x1={commitX(tagIndex)} y1="298" x2={commitX(tagIndex)} y2="330" />
-                      <text class="tag-label" x={commitX(tagIndex) - 28} y={326 + (index % 2) * 16}>{tag.name}</text>
+                      <line class="tag-line" x1={commitX(tagIndex)} y1={graphHeight() - 72} x2={commitX(tagIndex)} y2={graphHeight() - 40} />
+                      <text class="tag-label" x={commitX(tagIndex) - 28} y={graphHeight() - 44 + (index % 2) * 16}>{tag.name}</text>
                     {/if}
                   {/each}
                 {/if}
@@ -393,7 +457,7 @@
             </div>
           </div>
 
-          <aside class="panel map-detail-panel">
+          <aside class="panel map-detail-panel selection-inspector">
             <div class="section-title">
               <div>
                 <p class="eyebrow">Dettaglio</p>
