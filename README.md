@@ -30,6 +30,7 @@ It helps you build a repository pitlane, run Gitleaks in a controlled way, keep 
 - **Fleet scanning, not one-off scans**: collect GitHub and Bitbucket repositories into a reusable pitlane.
 - **Private GitHub repositories**: use the local GitHub CLI session without storing GitHub tokens in LeakLane.
 - **Persistent evidence**: keep executions, findings, raw JSON reports, generated AI analysis, and deltas.
+- **Repository intelligence**: inspect branches, tags, recent commits, PRs, and leak overlays in one map.
 - **Local AI review**: ask LM Studio to summarize risk, likely false positives, and remediation priorities.
 - **Desktop ready**: run the SvelteKit UI as a Tauri app with a local Python backend.
 
@@ -51,6 +52,7 @@ Screenshots use demo data.
 - Run Gitleaks in `git` or `dir` mode.
 - Persist every execution, finding, JSON report, and AI analysis.
 - Compare scan deltas across repeated executions.
+- Inspect repository structure through a Git graph-style map.
 - Generate local Markdown triage with LM Studio.
 - Run as a SvelteKit web UI or a Tauri desktop app.
 

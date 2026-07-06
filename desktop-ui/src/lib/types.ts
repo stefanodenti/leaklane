@@ -227,3 +227,73 @@ export type StagedRepository = {
   language?: string;
   stars?: number | null;
 };
+
+export type RepositoryMapSummary = {
+  branches: number;
+  tags: number;
+  pull_requests: number;
+  commits: number;
+  findings: number;
+  stale_branches: number;
+};
+
+export type RepositoryMapCommit = {
+  hash: string;
+  short: string;
+  parents: string[];
+  timestamp: number;
+  author: string;
+  subject: string;
+  findings: number;
+};
+
+export type RepositoryMapBranch = {
+  name: string;
+  remote_name: string;
+  commit: string;
+  short: string;
+  updated_at: number;
+  subject: string;
+  is_default: boolean;
+  findings: number;
+};
+
+export type RepositoryMapTag = {
+  name: string;
+  commit: string;
+  short: string;
+  created_at: number;
+  subject: string;
+};
+
+export type RepositoryPullRequest = {
+  number: number;
+  title: string;
+  state: string;
+  author?: string | null;
+  head?: string | null;
+  base?: string | null;
+  url?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  merged_at?: string | null;
+  is_draft?: boolean | null;
+};
+
+export type RepositoryMap = {
+  repository: {
+    name: string;
+    url: string;
+    provider: string;
+    default_branch?: string | null;
+    latest_job_id?: string | null;
+    latest_findings: number;
+  };
+  summary: RepositoryMapSummary;
+  branches: RepositoryMapBranch[];
+  tags: RepositoryMapTag[];
+  pull_requests: RepositoryPullRequest[];
+  commits: RepositoryMapCommit[];
+  findings: Array<FindingPreview & { fingerprint?: string | null }>;
+  updated_at: number;
+};

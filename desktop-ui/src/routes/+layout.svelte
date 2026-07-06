@@ -8,6 +8,7 @@
     { href: '/scan', label: 'Scansione', kicker: 'Setup' },
     { href: '/reports', label: 'Report', kicker: 'Archivio' },
     { href: '/compare', label: 'Confronti', kicker: 'Delta' },
+    { href: '/map', label: 'Mappa Repo', kicker: 'Struttura' },
     { href: '/settings', label: 'Settings', kicker: 'Locale' }
   ];
 </script>

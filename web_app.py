@@ -160,6 +160,9 @@ class Handler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/dashboard":
             self.send_json(risk_dashboard())
             return
+        if parsed.path == "/api/repository-map":
+            self.handle_repository_map(parsed)
+            return
         if parsed.path == "/api/diffs":
             self.send_json(scan_diffs())
             return
@@ -340,6 +343,18 @@ class Handler(SimpleHTTPRequestHandler):
         thread = threading.Thread(target=run_scan_job, args=(job, args), daemon=True)
         thread.start()
         self.send_json({"job": job.to_dict()}, HTTPStatus.ACCEPTED)
+
+    def handle_repository_map(self, parsed: urllib.parse.ParseResult) -> None:
+        url = urllib.parse.parse_qs(parsed.query).get("url", [""])[0].strip()
+        if not url:
+            self.send_json({"error": "Repository URL is required."}, HTTPStatus.BAD_REQUEST)
+            return
+        try:
+            payload = repository_map(normalize_repo_url(url))
+        except Exception as exc:
+            self.send_json({"error": str(exc)}, HTTPStatus.BAD_GATEWAY)
+            return
+        self.send_json(payload)
 
     def handle_job(self, path: str) -> None:
         job_id = path.removeprefix("/api/jobs/").strip("/")
@@ -887,6 +902,266 @@ def scan_diffs() -> dict:
         },
         "comparisons": comparisons,
     }
+
+
+def repository_map(url: str) -> dict:
+    require_command("git")
+    if not urllib.parse.urlparse(url).scheme.startswith("http"):
+        raise RuntimeError("Only HTTP(S) repository URLs are supported.")
+
+    latest = latest_repo_result(url)
+    with tempfile.TemporaryDirectory(prefix="leaklane-repo-map-") as tmp:
+        repo_path = Path(tmp) / repo_name_from_url(url)
+        clone = clone_repo_for_map(url, repo_path)
+        if clone.returncode != 0:
+            detail = clone.stderr.strip() or clone.stdout.strip() or "clone failed"
+            raise RuntimeError(f"Unable to clone repository for map: {detail}")
+
+        commits = git_commit_graph(repo_path, latest["items"])
+        branches = git_branches(repo_path, commits)
+        tags = git_tags(repo_path)
+        prs = github_pull_requests(url)
+        default_branch = git_default_branch(repo_path)
+
+    stale_threshold = time.time() - (90 * 24 * 60 * 60)
+    stale_branches = sum(1 for branch in branches if branch.get("updated_at") and branch["updated_at"] < stale_threshold)
+    return {
+        "repository": {
+            "name": repo_name_from_url(url),
+            "url": url,
+            "provider": provider_from_url(url),
+            "default_branch": default_branch,
+            "latest_job_id": latest.get("job_id"),
+            "latest_findings": latest.get("findings", 0),
+        },
+        "summary": {
+            "branches": len(branches),
+            "tags": len(tags),
+            "pull_requests": len(prs),
+            "commits": len(commits),
+            "findings": latest.get("findings", 0),
+            "stale_branches": stale_branches,
+        },
+        "branches": branches,
+        "tags": tags,
+        "pull_requests": prs,
+        "commits": commits,
+        "findings": [finding_preview(item) | {"fingerprint": item.get("fingerprint")} for item in latest["items"]],
+        "updated_at": time.time(),
+    }
+
+
+def clone_repo_for_map(url: str, target: Path) -> subprocess.CompletedProcess[str]:
+    if is_github_url(url) and github_cli_status().get("ready"):
+        spec = github_repo_spec(url)
+        if spec:
+            command = ["gh", "repo", "clone", spec, str(target), "--", "--quiet", "--filter=blob:none", "--no-checkout"]
+            return run_local_command(command, timeout=180)
+    command = ["git", "clone", "--quiet", "--filter=blob:none", "--no-checkout", url, str(target)]
+    return run_local_command(command, timeout=180)
+
+
+def git_local(command: list[str], cwd: Path, timeout: int = 30) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *command],
+        cwd=cwd,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+        timeout=timeout,
+    )
+
+
+def git_default_branch(repo_path: Path) -> str | None:
+    result = git_local(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], repo_path)
+    if result.returncode == 0:
+        value = result.stdout.strip()
+        if value.startswith("origin/"):
+            return value.removeprefix("origin/")
+        return value or None
+    return None
+
+
+def git_commit_graph(repo_path: Path, findings: list[dict]) -> list[dict]:
+    result = git_local(
+        [
+            "log",
+            "--all",
+            "--topo-order",
+            "--date=unix",
+            "--pretty=format:%H%x09%P%x09%ct%x09%an%x09%s",
+            "-n",
+            "120",
+        ],
+        repo_path,
+        timeout=45,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "git log failed"
+        raise RuntimeError(detail)
+
+    finding_counts = findings_by_commit(findings)
+    commits = []
+    for line in result.stdout.splitlines():
+        parts = line.split("\t", 4)
+        if len(parts) < 5:
+            continue
+        commit_hash, parents, timestamp, author, subject = parts
+        commits.append(
+            {
+                "hash": commit_hash,
+                "short": commit_hash[:8],
+                "parents": parents.split() if parents else [],
+                "timestamp": int(timestamp or 0),
+                "author": author,
+                "subject": subject,
+                "findings": finding_counts.get(commit_hash, 0),
+            }
+        )
+    return commits
+
+
+def git_branches(repo_path: Path, commits: list[dict]) -> list[dict]:
+    result = git_local(
+        [
+            "for-each-ref",
+            "--sort=-committerdate",
+            "--format=%(refname:short)%09%(objectname)%09%(committerdate:unix)%09%(subject)",
+            "refs/remotes/origin",
+        ],
+        repo_path,
+    )
+    if result.returncode != 0:
+        return []
+
+    default_branch = git_default_branch(repo_path)
+    commit_findings = {commit["hash"]: commit.get("findings", 0) for commit in commits}
+    branches = []
+    for line in result.stdout.splitlines():
+        parts = line.split("\t", 3)
+        if len(parts) < 4:
+            continue
+        name, commit_hash, timestamp, subject = parts
+        if name == "origin/HEAD":
+            continue
+        clean_name = name.removeprefix("origin/")
+        branches.append(
+            {
+                "name": clean_name,
+                "remote_name": name,
+                "commit": commit_hash,
+                "short": commit_hash[:8],
+                "updated_at": int(timestamp or 0),
+                "subject": subject,
+                "is_default": clean_name == default_branch,
+                "findings": commit_findings.get(commit_hash, 0),
+            }
+        )
+    return branches[:40]
+
+
+def git_tags(repo_path: Path) -> list[dict]:
+    result = git_local(
+        [
+            "for-each-ref",
+            "--sort=-creatordate",
+            "--count=30",
+            "--format=%(refname:short)%09%(objectname)%09%(creatordate:unix)%09%(subject)",
+            "refs/tags",
+        ],
+        repo_path,
+    )
+    if result.returncode != 0:
+        return []
+
+    tags = []
+    for line in result.stdout.splitlines():
+        parts = line.split("\t", 3)
+        if len(parts) < 4:
+            continue
+        name, commit_hash, timestamp, subject = parts
+        tags.append(
+            {
+                "name": name,
+                "commit": commit_hash,
+                "short": commit_hash[:8],
+                "created_at": int(timestamp or 0),
+                "subject": subject,
+            }
+        )
+    return tags
+
+
+def github_pull_requests(url: str) -> list[dict]:
+    spec = github_repo_spec(url) if is_github_url(url) else None
+    if not spec or not github_cli_status().get("ready"):
+        return []
+    command = [
+        "gh",
+        "pr",
+        "list",
+        "--repo",
+        spec,
+        "--state",
+        "all",
+        "--limit",
+        "30",
+        "--json",
+        "number,title,state,author,headRefName,baseRefName,updatedAt,createdAt,mergedAt,url,isDraft",
+    ]
+    try:
+        result = run_local_command(command, timeout=30)
+    except Exception:
+        return []
+    if result.returncode != 0:
+        return []
+    try:
+        payload = json.loads(result.stdout or "[]")
+    except json.JSONDecodeError:
+        return []
+    return [
+        {
+            "number": item.get("number"),
+            "title": item.get("title"),
+            "state": item.get("state"),
+            "author": (item.get("author") or {}).get("login"),
+            "head": item.get("headRefName"),
+            "base": item.get("baseRefName"),
+            "url": item.get("url"),
+            "created_at": item.get("createdAt"),
+            "updated_at": item.get("updatedAt"),
+            "merged_at": item.get("mergedAt"),
+            "is_draft": item.get("isDraft"),
+        }
+        for item in payload
+    ]
+
+
+def latest_repo_result(url: str) -> dict:
+    key = normalize_repo_key(url)
+    with jobs_lock:
+        snapshot = [job.to_dict() for job in jobs.values()]
+    ordered = sorted(snapshot, key=lambda job: job.get("finished_at") or job.get("started_at") or 0, reverse=True)
+    for job in ordered:
+        for result in job.get("results", []):
+            if normalize_repo_key(result.get("url") or "", result.get("name")) == key:
+                return {
+                    "job_id": job.get("id"),
+                    "findings": int(result.get("findings") or 0),
+                    "items": result.get("items") or [],
+                }
+    return {"job_id": None, "findings": 0, "items": []}
+
+
+def findings_by_commit(items: list[dict]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in items:
+        commit = str(item.get("commit") or "").strip()
+        if not commit:
+            continue
+        counts[commit] = counts.get(commit, 0) + 1
+    return counts
 
 
 def finding_map(items: list[dict]) -> dict[str, dict]:

@@ -5,6 +5,7 @@ import type {
   GithubStatus,
   JobPreview,
   PrerequisitesStatus,
+  RepositoryMap,
   ScanJobDetail,
   ScanPayload,
   SearchResult
@@ -51,6 +52,10 @@ export async function searchRepositories(query: string) {
 
 export function getDiffs() {
   return request<DiffResponse>('/api/diffs');
+}
+
+export function getRepositoryMap(url: string) {
+  return request<RepositoryMap>(`/api/repository-map?url=${encodeURIComponent(url)}`);
 }
 
 export async function getJobs() {

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Repository Intelligence view with branch, tag, commit, pull request, and Gitleaks finding overlay.
+- Read-only repository map API using temporary filtered clones that are removed after analysis.
+
 ## v0.1.0-alpha.1 - 2026-07-06
 
 First public alpha of LeakLane.
