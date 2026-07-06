@@ -350,6 +350,18 @@
     }
   }
 
+  function stopGraphInteraction(event: PointerEvent) {
+    event.stopPropagation();
+  }
+
+  function selectCommit(commit: RepositoryMapCommit) {
+    selected = { type: 'commit', item: commit };
+  }
+
+  function selectBranch(branch: RepositoryMapBranch) {
+    selected = { type: 'branch', item: branch };
+  }
+
   function freshness(branch: RepositoryMapBranch) {
     const days = Math.floor((Date.now() / 1000 - branch.updated_at) / 86400);
     if (days > 180) return 'Stale';
@@ -561,9 +573,11 @@
                         class="branch-marker"
                         role="button"
                         tabindex="0"
+                        aria-label={`Seleziona branch ${branch.name}`}
                         style={`--branch-color: ${branchColor(branch)}`}
-                        on:click={() => (selected = { type: 'branch', item: branch })}
-                        on:keydown={(event) => event.key === 'Enter' && (selected = { type: 'branch', item: branch })}
+                        on:pointerdown={stopGraphInteraction}
+                        on:click={() => selectBranch(branch)}
+                        on:keydown={(event) => event.key === 'Enter' && selectBranch(branch)}
                       >
                         <line class="branch-line" x1={commitX(branchIndex)} y1="28" x2={commitX(branchIndex)} y2="58" />
                         <rect
@@ -616,10 +630,21 @@
                     class="commit-node"
                     role="button"
                     tabindex="0"
+                    aria-label={`Seleziona commit ${commit.short}`}
                     style={`--branch-color: ${commitColor(commit, index)}`}
-                    on:click={() => (selected = { type: 'commit', item: commit })}
-                    on:keydown={(event) => event.key === 'Enter' && (selected = { type: 'commit', item: commit })}
+                    on:pointerdown={stopGraphInteraction}
+                    on:click={() => selectCommit(commit)}
+                    on:keydown={(event) => event.key === 'Enter' && selectCommit(commit)}
                   >
+                    <rect
+                      class="commit-hitbox"
+                      x={commitX(index) - 36}
+                      y={commitY(commit, index) - 30}
+                      width="72"
+                      height="74"
+                      rx="12"
+                      ry="12"
+                    />
                     <circle cx={commitX(index)} cy={commitY(commit, index)} r={commit.findings > 0 ? 13 : 10} />
                     <text x={commitX(index) - 22} y={commitY(commit, index) + 31}>{commit.short}</text>
                     {#if showFindings && commit.findings > 0}

@@ -10,6 +10,8 @@
 - Expanded Repository Intelligence graph workspace with larger canvas, stable branch lanes, lane guides, and bottom selection inspector.
 - GitKraken-inspired branch coloring with colored lanes, curved commit paths, branch pills, and an interactive branch legend.
 - Bottom drawer inspector for selected map elements with richer commit, branch, tag, PR, and finding details.
+- Clickable commit nodes in the repository graph with larger hit targets and drawer selection feedback.
+- Collapsible primary sidebar to give repository maps and report views more workspace.
 
 ## v0.1.0-alpha.1 - 2026-07-06
 

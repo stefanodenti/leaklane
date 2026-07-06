@@ -138,6 +138,11 @@ p {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
   min-height: 100dvh;
+  transition: grid-template-columns 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.app-shell.sidebar-collapsed {
+  grid-template-columns: 86px minmax(0, 1fr);
 }
 
 .sidebar {
@@ -150,6 +155,17 @@ p {
   position: sticky;
   top: 0;
   height: 100dvh;
+  overflow: hidden;
+  transition:
+    padding 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    gap 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sidebar-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
 }
 
 .brand {
@@ -157,6 +173,7 @@ p {
   grid-template-columns: 44px 1fr;
   gap: 12px;
   align-items: center;
+  min-width: 0;
 }
 
 .brand-mark {
@@ -191,6 +208,29 @@ p {
   font-size: 1.03rem;
 }
 
+.brand-copy {
+  min-width: 0;
+}
+
+.brand-copy p,
+.brand-copy h1 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-toggle {
+  width: 36px;
+  min-height: 36px;
+  border-color: var(--line);
+  background: var(--surface-2);
+  display: grid;
+  place-items: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-weight: 860;
+  padding: 0;
+}
+
 nav {
   display: grid;
   align-content: start;
@@ -202,14 +242,20 @@ nav a {
   border-radius: var(--radius);
   display: grid;
   gap: 3px;
+  min-width: 0;
   padding: 11px 12px;
 }
 
-nav a span {
+.nav-kicker,
+.nav-compact {
   color: var(--muted);
   font-size: 0.72rem;
   font-weight: 760;
   text-transform: uppercase;
+}
+
+.nav-compact {
+  display: none;
 }
 
 nav a strong {
@@ -231,6 +277,10 @@ nav a:hover {
   padding: 12px;
 }
 
+.sidebar-status i {
+  display: none;
+}
+
 .sidebar-status span {
   color: var(--muted);
   font-size: 0.76rem;
@@ -239,6 +289,77 @@ nav a:hover {
 .page-frame {
   width: min(1680px, 100%);
   padding: 28px;
+}
+
+.app-shell.sidebar-collapsed .sidebar {
+  gap: 18px;
+  padding: 18px 14px;
+}
+
+.app-shell.sidebar-collapsed .sidebar-top {
+  grid-template-columns: 1fr;
+}
+
+.app-shell.sidebar-collapsed .brand {
+  grid-template-columns: 1fr;
+  justify-items: center;
+}
+
+.app-shell.sidebar-collapsed .brand-copy,
+.app-shell.sidebar-collapsed .nav-kicker,
+.app-shell.sidebar-collapsed nav a strong,
+.app-shell.sidebar-collapsed .sidebar-status span,
+.app-shell.sidebar-collapsed .sidebar-status strong {
+  display: none;
+}
+
+.app-shell.sidebar-collapsed .brand-mark {
+  width: 42px;
+  height: 42px;
+}
+
+.app-shell.sidebar-collapsed .sidebar-toggle {
+  justify-self: center;
+}
+
+.app-shell.sidebar-collapsed nav a {
+  min-height: 46px;
+  place-items: center;
+  padding: 0;
+}
+
+.app-shell.sidebar-collapsed .nav-compact {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.7rem;
+  letter-spacing: 0;
+}
+
+.app-shell.sidebar-collapsed nav a.active .nav-compact,
+.app-shell.sidebar-collapsed nav a:hover .nav-compact {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
+  background: color-mix(in srgb, var(--surface-2) 78%, var(--accent) 18%);
+}
+
+.app-shell.sidebar-collapsed .sidebar-status {
+  min-height: 44px;
+  place-items: center;
+  padding: 0;
+}
+
+.app-shell.sidebar-collapsed .sidebar-status i {
+  display: block;
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  background: var(--clean-ink);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--clean-ink) 18%, transparent);
 }
 
 .page-head {
@@ -1242,6 +1363,22 @@ textarea {
   outline: none;
 }
 
+.commit-hitbox {
+  fill: transparent;
+  stroke: transparent;
+  stroke-width: 1;
+  transition:
+    fill 160ms ease,
+    stroke 160ms ease;
+}
+
+.commit-node:hover .commit-hitbox,
+.commit-node:focus .commit-hitbox,
+.commit-node.selected-commit .commit-hitbox {
+  fill: color-mix(in srgb, var(--branch-color) 9%, transparent);
+  stroke: color-mix(in srgb, var(--branch-color) 28%, transparent);
+}
+
 .commit-node circle {
   fill: var(--surface);
   stroke: var(--branch-color);
@@ -1780,9 +1917,52 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .app-shell.sidebar-collapsed {
+    grid-template-columns: 1fr;
+  }
+
   .sidebar {
     position: static;
     height: auto;
+  }
+
+  .app-shell.sidebar-collapsed .sidebar {
+    gap: 22px;
+    padding: 22px;
+  }
+
+  .app-shell.sidebar-collapsed .sidebar-top {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .app-shell.sidebar-collapsed .brand {
+    grid-template-columns: 44px 1fr;
+    justify-items: stretch;
+  }
+
+  .app-shell.sidebar-collapsed .brand-copy,
+  .app-shell.sidebar-collapsed .nav-kicker,
+  .app-shell.sidebar-collapsed nav a strong,
+  .app-shell.sidebar-collapsed .sidebar-status span,
+  .app-shell.sidebar-collapsed .sidebar-status strong {
+    display: block;
+  }
+
+  .app-shell.sidebar-collapsed .nav-compact,
+  .app-shell.sidebar-collapsed .sidebar-status i {
+    display: none;
+  }
+
+  .app-shell.sidebar-collapsed nav a {
+    min-height: 0;
+    place-items: stretch;
+    padding: 11px 12px;
+  }
+
+  .app-shell.sidebar-collapsed .sidebar-status {
+    min-height: 0;
+    place-items: stretch;
+    padding: 12px;
   }
 
   nav,
