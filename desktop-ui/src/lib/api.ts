@@ -54,8 +54,10 @@ export function getDiffs() {
   return request<DiffResponse>('/api/diffs');
 }
 
-export function getRepositoryMap(url: string) {
-  return request<RepositoryMap>(`/api/repository-map?url=${encodeURIComponent(url)}`);
+export function getRepositoryMap(url: string, refresh = false) {
+  const query = new URLSearchParams({ url });
+  if (refresh) query.set('refresh', '1');
+  return request<RepositoryMap>(`/api/repository-map?${query.toString()}`);
 }
 
 export async function getJobs() {

@@ -1104,8 +1104,14 @@ textarea {
     linear-gradient(90deg, color-mix(in srgb, var(--line) 42%, transparent) 1px, transparent 1px),
     var(--surface-2);
   background-size: 44px 44px;
+  cursor: grab;
   overflow-x: auto;
   overflow-y: hidden;
+  user-select: none;
+}
+
+.graph-scroll.dragging {
+  cursor: grabbing;
 }
 
 .commit-graph {
@@ -1120,7 +1126,8 @@ textarea {
 }
 
 .branch-line,
-.tag-line {
+.tag-line,
+.pr-line {
   stroke: color-mix(in srgb, var(--accent) 55%, var(--line));
   stroke-dasharray: 4 5;
   stroke-width: 1.5;
@@ -1128,6 +1135,10 @@ textarea {
 
 .tag-line {
   stroke: color-mix(in srgb, var(--warn-ink) 70%, var(--line));
+}
+
+.pr-line {
+  stroke: color-mix(in srgb, var(--clean-ink) 64%, var(--line));
 }
 
 .commit-node {
@@ -1146,7 +1157,8 @@ textarea {
 }
 
 .commit-node:hover circle,
-.commit-node:focus circle {
+.commit-node:focus circle,
+.commit-node.selected-commit circle {
   fill: color-mix(in srgb, var(--accent) 16%, var(--surface));
   stroke-width: 3.4;
 }
@@ -1159,6 +1171,7 @@ textarea {
 .commit-node text,
 .branch-label,
 .tag-label,
+.pr-label,
 .mini-label {
   fill: var(--muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
@@ -1178,6 +1191,11 @@ textarea {
 
 .tag-label {
   fill: var(--warn-ink);
+}
+
+.pr-label {
+  fill: var(--clean-ink);
+  font-weight: 820;
 }
 
 .finding-count {
@@ -1220,6 +1238,108 @@ textarea {
   font-size: 0.76rem;
   overflow-wrap: anywhere;
   padding: 10px;
+}
+
+.map-toolbar {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+  padding: 9px;
+}
+
+.map-toolbar label {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  gap: 7px;
+  align-items: center;
+  color: var(--muted);
+  padding: 0 10px;
+}
+
+.map-toolbar input {
+  min-height: 0;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+}
+
+.segmented-control {
+  display: inline-grid;
+  grid-template-columns: repeat(3, auto);
+}
+
+.segmented-control button {
+  min-height: 34px;
+  border-radius: 0;
+}
+
+.segmented-control button:first-child {
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+
+.segmented-control button:last-child {
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.commit-finding-stack {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+}
+
+.finding-chip-row {
+  min-height: 0;
+  width: 100%;
+  border-color: var(--line);
+  background: var(--surface-2);
+  display: grid;
+  grid-template-columns: auto minmax(0, 0.7fr) minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 9px;
+  text-align: left;
+}
+
+.finding-chip-row > span {
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 820;
+  padding: 5px 8px;
+  text-transform: capitalize;
+}
+
+.finding-chip-row strong,
+.finding-chip-row em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.finding-chip-row em {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-style: normal;
+}
+
+.map-findings-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.map-finding-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .repo-secondary-grid {
@@ -1414,6 +1534,7 @@ textarea {
   .map-layout,
   .repo-map-grid,
   .repo-secondary-grid,
+  .map-finding-grid,
   .settings-grid.two,
   .desktop-notes,
   .note-grid,
@@ -1452,6 +1573,7 @@ textarea {
   .result-head,
   .branch-row,
   .pr-row,
+  .finding-chip-row,
   .finding-details div {
     grid-template-columns: 1fr;
   }

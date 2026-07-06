@@ -42,6 +42,8 @@ AI_ANALYSIS_MAX_TOKENS = 4096
 AI_ANALYSIS_TIMEOUT_SECONDS = 600
 jobs_lock = threading.Lock()
 jobs: dict[str, "ScanJob"] = {}
+repository_map_cache: dict[str, tuple[float, dict]] = {}
+REPOSITORY_MAP_CACHE_SECONDS = 600
 
 
 class EmptyModelResponse(RuntimeError):
@@ -345,12 +347,14 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_json({"job": job.to_dict()}, HTTPStatus.ACCEPTED)
 
     def handle_repository_map(self, parsed: urllib.parse.ParseResult) -> None:
-        url = urllib.parse.parse_qs(parsed.query).get("url", [""])[0].strip()
+        query = urllib.parse.parse_qs(parsed.query)
+        url = query.get("url", [""])[0].strip()
+        refresh = query.get("refresh", ["0"])[0].strip() in {"1", "true", "yes"}
         if not url:
             self.send_json({"error": "Repository URL is required."}, HTTPStatus.BAD_REQUEST)
             return
         try:
-            payload = repository_map(normalize_repo_url(url))
+            payload = repository_map(normalize_repo_url(url), refresh=refresh)
         except Exception as exc:
             self.send_json({"error": str(exc)}, HTTPStatus.BAD_GATEWAY)
             return
@@ -904,10 +908,21 @@ def scan_diffs() -> dict:
     }
 
 
-def repository_map(url: str) -> dict:
+def repository_map(url: str, refresh: bool = False) -> dict:
     require_command("git")
     if not urllib.parse.urlparse(url).scheme.startswith("http"):
         raise RuntimeError("Only HTTP(S) repository URLs are supported.")
+
+    cache_key = normalize_repo_key(url)
+    cached = repository_map_cache.get(cache_key)
+    if cached and not refresh and time.time() - cached[0] < REPOSITORY_MAP_CACHE_SECONDS:
+        payload = json.loads(json.dumps(cached[1]))
+        payload["cache"] = {
+            "hit": True,
+            "generated_at": cached[0],
+            "ttl_seconds": REPOSITORY_MAP_CACHE_SECONDS,
+        }
+        return payload
 
     latest = latest_repo_result(url)
     with tempfile.TemporaryDirectory(prefix="leaklane-repo-map-") as tmp:
@@ -925,7 +940,8 @@ def repository_map(url: str) -> dict:
 
     stale_threshold = time.time() - (90 * 24 * 60 * 60)
     stale_branches = sum(1 for branch in branches if branch.get("updated_at") and branch["updated_at"] < stale_threshold)
-    return {
+    generated_at = time.time()
+    payload = {
         "repository": {
             "name": repo_name_from_url(url),
             "url": url,
@@ -946,9 +962,16 @@ def repository_map(url: str) -> dict:
         "tags": tags,
         "pull_requests": prs,
         "commits": commits,
-        "findings": [finding_preview(item) | {"fingerprint": item.get("fingerprint")} for item in latest["items"]],
-        "updated_at": time.time(),
+        "findings": repository_map_findings(latest["items"]),
+        "cache": {
+            "hit": False,
+            "generated_at": generated_at,
+            "ttl_seconds": REPOSITORY_MAP_CACHE_SECONDS,
+        },
+        "updated_at": generated_at,
     }
+    repository_map_cache[cache_key] = (generated_at, payload)
+    return payload
 
 
 def clone_repo_for_map(url: str, target: Path) -> subprocess.CompletedProcess[str]:
@@ -1162,6 +1185,24 @@ def findings_by_commit(items: list[dict]) -> dict[str, int]:
             continue
         counts[commit] = counts.get(commit, 0) + 1
     return counts
+
+
+def repository_map_findings(items: list[dict]) -> list[dict]:
+    output = []
+    for item in items:
+        output.append(
+            {
+                "rule": item.get("rule"),
+                "description": item.get("description"),
+                "file": item.get("file"),
+                "line": item.get("line"),
+                "commit": item.get("commit"),
+                "fingerprint": item.get("fingerprint"),
+                "link": item.get("link"),
+                "severity": severity_for_finding(item),
+            }
+        )
+    return output
 
 
 def finding_map(items: list[dict]) -> dict[str, dict]:

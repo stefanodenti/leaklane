@@ -237,6 +237,13 @@ export type RepositoryMapSummary = {
   stale_branches: number;
 };
 
+export type RepositoryMapFinding = FindingPreview & {
+  description?: string | null;
+  fingerprint?: string | null;
+  link?: string | null;
+  severity?: RiskLevel | string;
+};
+
 export type RepositoryMapCommit = {
   hash: string;
   short: string;
@@ -294,6 +301,11 @@ export type RepositoryMap = {
   tags: RepositoryMapTag[];
   pull_requests: RepositoryPullRequest[];
   commits: RepositoryMapCommit[];
-  findings: Array<FindingPreview & { fingerprint?: string | null }>;
+  findings: RepositoryMapFinding[];
+  cache?: {
+    hit: boolean;
+    generated_at: number;
+    ttl_seconds: number;
+  };
   updated_at: number;
 };
