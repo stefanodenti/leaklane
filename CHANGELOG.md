@@ -9,6 +9,7 @@
 - Repository map cache, graph zoom controls, branch/tag/PR/finding filters, drag-to-pan, and finding detail drill-down.
 - Expanded Repository Intelligence graph workspace with larger canvas, stable branch lanes, lane guides, and bottom selection inspector.
 - GitKraken-inspired branch coloring with colored lanes, curved commit paths, branch pills, and an interactive branch legend.
+- Bottom drawer inspector for selected map elements with richer commit, branch, tag, PR, and finding details.
 
 ## v0.1.0-alpha.1 - 2026-07-06
 

@@ -239,6 +239,72 @@
     return map.branches.find((branch) => branch.name === pr.head) || null;
   }
 
+  function branchesForCommit(commit: RepositoryMapCommit, map: RepositoryMap) {
+    return map.branches.filter((branch) => branch.commit === commit.hash);
+  }
+
+  function tagsForCommit(commit: RepositoryMapCommit, map: RepositoryMap) {
+    return map.tags.filter((tag) => tag.commit === commit.hash);
+  }
+
+  function pullRequestsForBranch(branch: RepositoryMapBranch, map: RepositoryMap) {
+    return map.pull_requests.filter((pr) => pr.head === branch.name || pr.base === branch.name);
+  }
+
+  function commitPosition(commit: RepositoryMapCommit, map: RepositoryMap) {
+    const index = map.commits.findIndex((item) => item.hash === commit.hash);
+    if (index < 0) return 'Non in vista';
+    return `#${index + 1} di ${formatNumber(map.commits.length)}`;
+  }
+
+  function commitLaneNumber(commit: RepositoryMapCommit, map: RepositoryMap) {
+    const index = map.commits.findIndex((item) => item.hash === commit.hash);
+    return commitLane(commit, Math.max(0, index)) + 1;
+  }
+
+  function selectCommitByHash(hash: string | null | undefined, map: RepositoryMap | null) {
+    if (!hash || !map) return;
+    const commit = commitByHash(hash, map);
+    if (commit) {
+      selected = { type: 'commit', item: commit };
+    }
+  }
+
+  function selectedTitle(selection: Selection) {
+    if (!selection) return 'Elemento selezionato';
+    if (selection.type === 'commit') return selection.item.short;
+    if (selection.type === 'branch') return selection.item.name;
+    if (selection.type === 'finding') return selection.item.rule || 'unknown-rule';
+    if (selection.type === 'tag') return selection.item.name;
+    return `PR #${selection.item.number}`;
+  }
+
+  function selectedKind(selection: Selection) {
+    if (!selection) return 'Dettaglio';
+    if (selection.type === 'commit') return 'Commit';
+    if (selection.type === 'branch') return 'Branch';
+    if (selection.type === 'finding') return 'Finding Gitleaks';
+    if (selection.type === 'tag') return 'Tag';
+    return 'Pull request';
+  }
+
+  function selectedColor(selection: Selection, map: RepositoryMap) {
+    if (!selection) return 'var(--accent)';
+    if (selection.type === 'commit') {
+      const index = map.commits.findIndex((commit) => commit.hash === selection.item.hash);
+      return commitColor(selection.item, Math.max(0, index));
+    }
+    if (selection.type === 'branch') return branchColor(selection.item);
+    if (selection.type === 'tag') return tagColor(selection.item, map);
+    if (selection.type === 'pr') {
+      const branch = branchForPr(selection.item, map);
+      return branch ? branchColor(branch) : 'var(--clean-ink)';
+    }
+    if (selection.item.severity === 'critical' || selection.item.severity === 'high') return 'var(--danger-ink)';
+    if (selection.item.severity === 'low' || selection.item.severity === 'clean') return 'var(--clean-ink)';
+    return 'var(--warn-ink)';
+  }
+
   function isSelectedCommit(commit: RepositoryMapCommit) {
     return selected?.type === 'commit' && selected.item.hash === commit.hash;
   }
@@ -568,77 +634,6 @@
             </div>
           </div>
 
-          <aside class="panel map-detail-panel selection-inspector">
-            <div class="section-title">
-              <div>
-                <p class="eyebrow">Dettaglio</p>
-                <h3>Elemento selezionato</h3>
-              </div>
-            </div>
-
-            {#if selected?.type === 'commit'}
-              <div class="detail-stack">
-                <strong>{selected.item.short}</strong>
-                <p>{selected.item.subject}</p>
-                <span>{selected.item.author} | {formatDate(selected.item.timestamp)}</span>
-                <code>{selected.item.hash}</code>
-                <div class="counter-line">
-                  <span>Parent {formatNumber(selected.item.parents.length)}</span>
-                  <span class:risk-critical={selected.item.findings > 0}>Finding {formatNumber(selected.item.findings)}</span>
-                </div>
-                {#if repoMap && commitFindings(selected.item, repoMap).length}
-                  <div class="commit-finding-stack">
-                    <span class="eyebrow">Finding sul commit</span>
-                    {#each commitFindings(selected.item, repoMap) as finding}
-                      <button class="finding-chip-row" type="button" on:click={() => (selected = { type: 'finding', item: finding })}>
-                        <span class={severityClass(finding)}>{finding.severity || 'finding'}</span>
-                        <strong>{finding.rule || 'unknown-rule'}</strong>
-                        <em>{finding.file}:{finding.line || '?'}</em>
-                      </button>
-                    {/each}
-                  </div>
-                {/if}
-              </div>
-            {:else if selected?.type === 'finding'}
-              <div class="detail-stack">
-                <strong>{selected.item.rule || 'unknown-rule'}</strong>
-                <p>{selected.item.description || 'Finding collegato all ultima scansione Gitleaks.'}</p>
-                <span>{selected.item.file}:{selected.item.line || '?'}</span>
-                {#if selected.item.commit}<code>{selected.item.commit}</code>{/if}
-                <div class="counter-line">
-                  <span class={severityClass(selected.item)}>{selected.item.severity || 'finding'}</span>
-                  {#if selected.item.fingerprint}<span>Fingerprint presente</span>{/if}
-                </div>
-                {#if selected.item.link}
-                  <a class="button-link" href={selected.item.link} target="_blank" rel="noreferrer">Apri origine</a>
-                {/if}
-              </div>
-            {:else if selected?.type === 'branch'}
-              <div class="detail-stack">
-                <strong>{selected.item.name}</strong>
-                <p>{selected.item.subject}</p>
-                <span>{freshness(selected.item)} | {formatDate(selected.item.updated_at)}</span>
-                <code>{selected.item.commit}</code>
-              </div>
-            {:else if selected?.type === 'tag'}
-              <div class="detail-stack">
-                <strong>{selected.item.name}</strong>
-                <p>{selected.item.subject || 'Tag senza messaggio.'}</p>
-                <span>{formatDate(selected.item.created_at)}</span>
-                <code>{selected.item.commit}</code>
-              </div>
-            {:else if selected?.type === 'pr'}
-              <div class="detail-stack">
-                <strong>PR #{selected.item.number}</strong>
-                <p>{selected.item.title}</p>
-                <span>{selected.item.head} -> {selected.item.base}</span>
-                <span>Aggiornata {isoDate(selected.item.updated_at)}</span>
-                {#if selected.item.url}<a class="button-link" href={selected.item.url} target="_blank" rel="noreferrer">Apri PR</a>{/if}
-              </div>
-            {:else}
-              <div class="empty">Seleziona un commit, branch, tag o PR per vedere i dettagli.</div>
-            {/if}
-          </aside>
         </section>
 
         <section class="repo-secondary-grid">
@@ -718,6 +713,178 @@
               {/each}
             </div>
           </section>
+        {/if}
+
+        {#if selected}
+          <aside
+            class="selection-drawer"
+            style={`--selection-color: ${selectedColor(selected, repoMap)}`}
+            aria-label="Dettaglio elemento selezionato"
+          >
+            <div class="selection-drawer-handle"></div>
+            <div class="selection-drawer-head">
+              <div>
+                <p class="eyebrow">{selectedKind(selected)}</p>
+                <h3>{selectedTitle(selected)}</h3>
+              </div>
+              <button class="ghost close-drawer" type="button" aria-label="Chiudi dettaglio selezione" on:click={() => (selected = null)}>
+                Chiudi
+              </button>
+            </div>
+
+            {#if selected.type === 'commit'}
+              <div class="drawer-grid">
+                <div class="drawer-primary">
+                  <p>{selected.item.subject}</p>
+                  <div class="drawer-meta-grid">
+                    <span><strong>Autore</strong>{selected.item.author}</span>
+                    <span><strong>Data</strong>{formatDate(selected.item.timestamp)}</span>
+                    <span><strong>Posizione</strong>{commitPosition(selected.item, repoMap)}</span>
+                    <span><strong>Lane</strong>{commitLaneNumber(selected.item, repoMap)}</span>
+                  </div>
+                  <code>{selected.item.hash}</code>
+                </div>
+                <div class="drawer-side">
+                  <div class="drawer-stat-row">
+                    <span>Parent</span>
+                    <strong>{formatNumber(selected.item.parents.length)}</strong>
+                  </div>
+                  <div class="drawer-stat-row">
+                    <span>Finding</span>
+                    <strong class:risk-critical={selected.item.findings > 0}>{formatNumber(selected.item.findings)}</strong>
+                  </div>
+                  <div class="drawer-chip-list">
+                    {#each branchesForCommit(selected.item, repoMap) as branch}
+                      <button type="button" on:click={() => (selected = { type: 'branch', item: branch })}>{branch.name}</button>
+                    {/each}
+                    {#each tagsForCommit(selected.item, repoMap) as tag}
+                      <button type="button" on:click={() => (selected = { type: 'tag', item: tag })}>{tag.name}</button>
+                    {/each}
+                    {#if branchesForCommit(selected.item, repoMap).length === 0 && tagsForCommit(selected.item, repoMap).length === 0}
+                      <span>Nessuna label diretta</span>
+                    {/if}
+                  </div>
+                </div>
+              </div>
+
+              {#if commitFindings(selected.item, repoMap).length}
+                <div class="drawer-section">
+                  <p class="eyebrow">Finding sul commit</p>
+                  <div class="map-finding-grid compact">
+                    {#each commitFindings(selected.item, repoMap) as finding}
+                      <button class="finding-chip-row" type="button" on:click={() => (selected = { type: 'finding', item: finding })}>
+                        <span class={severityClass(finding)}>{finding.severity || 'finding'}</span>
+                        <strong>{finding.rule || 'unknown-rule'}</strong>
+                        <em>{finding.file}:{finding.line || '?'}</em>
+                      </button>
+                    {/each}
+                  </div>
+                </div>
+              {/if}
+            {:else if selected.type === 'branch'}
+              <div class="drawer-grid">
+                <div class="drawer-primary">
+                  <p>{selected.item.subject || 'Branch senza messaggio recente.'}</p>
+                  <div class="drawer-meta-grid">
+                    <span><strong>Stato</strong>{freshness(selected.item)}</span>
+                    <span><strong>Ultimo update</strong>{formatDate(selected.item.updated_at)}</span>
+                    <span><strong>Remote</strong>{selected.item.remote_name || 'n/d'}</span>
+                    <span><strong>Default</strong>{selected.item.is_default ? 'Si' : 'No'}</span>
+                  </div>
+                  <code>{selected.item.commit}</code>
+                </div>
+                <div class="drawer-side">
+                  <div class="drawer-stat-row">
+                    <span>Finding</span>
+                    <strong class:risk-critical={selected.item.findings > 0}>{formatNumber(selected.item.findings)}</strong>
+                  </div>
+                  <div class="drawer-stat-row">
+                    <span>PR collegate</span>
+                    <strong>{formatNumber(pullRequestsForBranch(selected.item, repoMap).length)}</strong>
+                  </div>
+                  <button class="button-link" type="button" on:click={() => selectCommitByHash(selected?.type === 'branch' ? selected.item.commit : null, repoMap)}>
+                    Apri commit head
+                  </button>
+                </div>
+              </div>
+              {#if pullRequestsForBranch(selected.item, repoMap).length}
+                <div class="drawer-section">
+                  <p class="eyebrow">Pull request collegate</p>
+                  <div class="pr-stack compact">
+                    {#each pullRequestsForBranch(selected.item, repoMap) as pr}
+                      <button class="pr-row" type="button" on:click={() => (selected = { type: 'pr', item: pr })}>
+                        <span class={prClass(pr)}>{pr.state}</span>
+                        <strong>#{pr.number} {pr.title}</strong>
+                        <em>{pr.head} -> {pr.base}</em>
+                      </button>
+                    {/each}
+                  </div>
+                </div>
+              {/if}
+            {:else if selected.type === 'finding'}
+              <div class="drawer-grid">
+                <div class="drawer-primary">
+                  <p>{selected.item.description || 'Finding collegato all ultima scansione Gitleaks.'}</p>
+                  <div class="drawer-meta-grid">
+                    <span><strong>Severita</strong>{selected.item.severity || 'finding'}</span>
+                    <span><strong>File</strong>{selected.item.file || 'n/d'}</span>
+                    <span><strong>Linea</strong>{selected.item.line || '?'}</span>
+                    <span><strong>Fingerprint</strong>{selected.item.fingerprint ? 'Presente' : 'n/d'}</span>
+                  </div>
+                  {#if selected.item.commit}<code>{selected.item.commit}</code>{/if}
+                </div>
+                <div class="drawer-side">
+                  <span class={severityClass(selected.item)}>{selected.item.severity || 'finding'}</span>
+                  {#if selected.item.link}
+                    <a class="button-link" href={selected.item.link} target="_blank" rel="noreferrer">Apri origine</a>
+                  {/if}
+                  {#if selected.item.commit && commitByHash(selected.item.commit, repoMap)}
+                    <button class="button-link" type="button" on:click={() => selectCommitByHash(selected?.type === 'finding' ? selected.item.commit : null, repoMap)}>
+                      Apri commit
+                    </button>
+                  {/if}
+                </div>
+              </div>
+            {:else if selected.type === 'tag'}
+              <div class="drawer-grid">
+                <div class="drawer-primary">
+                  <p>{selected.item.subject || 'Tag senza messaggio.'}</p>
+                  <div class="drawer-meta-grid">
+                    <span><strong>Creato</strong>{formatDate(selected.item.created_at)}</span>
+                    <span><strong>Commit breve</strong>{selected.item.short}</span>
+                    <span><strong>Commit in vista</strong>{commitIndex(selected.item.commit, repoMap) >= 0 ? 'Si' : 'No'}</span>
+                    <span><strong>Tipo</strong>Release marker</span>
+                  </div>
+                  <code>{selected.item.commit}</code>
+                </div>
+                <div class="drawer-side">
+                  {#if commitByHash(selected.item.commit, repoMap)}
+                    <button class="button-link" type="button" on:click={() => selectCommitByHash(selected?.type === 'tag' ? selected.item.commit : null, repoMap)}>
+                      Apri commit taggato
+                    </button>
+                  {/if}
+                </div>
+              </div>
+            {:else if selected.type === 'pr'}
+              <div class="drawer-grid">
+                <div class="drawer-primary">
+                  <p>{selected.item.title}</p>
+                  <div class="drawer-meta-grid">
+                    <span><strong>Stato</strong>{selected.item.state}{selected.item.is_draft ? ' draft' : ''}</span>
+                    <span><strong>Autore</strong>{selected.item.author || 'n/d'}</span>
+                    <span><strong>Creata</strong>{isoDate(selected.item.created_at)}</span>
+                    <span><strong>Aggiornata</strong>{isoDate(selected.item.updated_at)}</span>
+                  </div>
+                  <code>{selected.item.head || 'head n/d'} -> {selected.item.base || 'base n/d'}</code>
+                </div>
+                <div class="drawer-side">
+                  <span class={prClass(selected.item)}>{selected.item.state}</span>
+                  {#if selected.item.merged_at}<span>Merged {isoDate(selected.item.merged_at)}</span>{/if}
+                  {#if selected.item.url}<a class="button-link" href={selected.item.url} target="_blank" rel="noreferrer">Apri PR</a>{/if}
+                </div>
+              </div>
+            {/if}
+          </aside>
         {/if}
       {:else}
         <section class="panel map-intro">
