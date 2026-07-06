@@ -1,10 +1,47 @@
 # LeakLane
 
-**Local secret triage for repository fleets.**
+<p align="center">
+  <img src="desktop-ui/static/brand/leaklane-mark.svg" alt="LeakLane logo" width="96" />
+</p>
 
-LeakLane is a local-first desktop and web console for scanning GitHub and Bitbucket repositories with Gitleaks, preserving reports, and generating local AI triage through LM Studio.
+<p align="center">
+  <strong>Local secret triage for repository fleets.</strong>
+</p>
 
-It is built for teams that want repeatable secret scanning without sending repository data or findings to a hosted service.
+<p align="center">
+  Scan public and private repositories with Gitleaks, preserve every report, and generate local AI triage through LM Studio.
+</p>
+
+<p align="center">
+  <a href="https://github.com/stefanodenti/leaklane/releases/tag/v0.1.0-alpha.1"><img alt="Release" src="https://img.shields.io/badge/release-v0.1.0--alpha.1-7ccf9a"></a>
+  <img alt="Local first" src="https://img.shields.io/badge/local--first-yes-9fb7ff">
+  <img alt="Desktop" src="https://img.shields.io/badge/desktop-Tauri-ffc857">
+  <img alt="AI" src="https://img.shields.io/badge/AI-LM%20Studio-d6b3ff">
+</p>
+
+LeakLane is a local-first desktop and web console for teams that need repeatable secret scanning without sending repository data, findings, or AI prompts to a hosted service.
+
+It helps you build a repository pitlane, run Gitleaks in a controlled way, keep a historical archive of executions, compare deltas, and turn raw findings into a readable security triage.
+
+![LeakLane dashboard](docs/assets/leaklane-dashboard.png)
+
+## Why LeakLane
+
+- **Fleet scanning, not one-off scans**: collect GitHub and Bitbucket repositories into a reusable pitlane.
+- **Private GitHub repositories**: use the local GitHub CLI session without storing GitHub tokens in LeakLane.
+- **Persistent evidence**: keep executions, findings, raw JSON reports, generated AI analysis, and deltas.
+- **Local AI review**: ask LM Studio to summarize risk, likely false positives, and remediation priorities.
+- **Desktop ready**: run the SvelteKit UI as a Tauri app with a local Python backend.
+
+## Screenshots
+
+Screenshots use demo data.
+
+![Repository pitlane and GitHub CLI status](docs/assets/leaklane-repositories.png)
+
+| Configure scans | Review reports |
+| --- | --- |
+| ![Gitleaks and LM Studio setup](docs/assets/leaklane-scan-setup.png) | ![Report archive and AI triage](docs/assets/leaklane-reports.png) |
 
 ## What It Does
 
@@ -41,7 +78,7 @@ gh auth login -h github.com
 
 LeakLane does not store GitHub tokens. It uses the local session managed by `gh`.
 
-## Web Development
+## Quick Start
 
 Start the backend from the project root:
 
@@ -53,6 +90,7 @@ Start the SvelteKit UI:
 
 ```bash
 cd desktop-ui
+npm install
 npm run dev -- --port 5174
 ```
 
@@ -62,7 +100,7 @@ Open:
 http://127.0.0.1:5174/
 ```
 
-## Desktop Development
+## Desktop App
 
 The Tauri launcher starts the Python backend automatically if `127.0.0.1:8787` is not already responding.
 
@@ -70,6 +108,38 @@ The Tauri launcher starts the Python backend automatically if `127.0.0.1:8787` i
 cd desktop-ui
 npm run tauri:dev
 ```
+
+Build a local desktop package:
+
+```bash
+npm run tauri:build
+```
+
+The first alpha release includes a macOS Apple Silicon DMG:
+
+[Download LeakLane v0.1.0-alpha.1](https://github.com/stefanodenti/leaklane/releases/tag/v0.1.0-alpha.1)
+
+## Local AI Triage
+
+LeakLane can call an OpenAI-compatible LM Studio server after a scan and save the generated Markdown analysis with the report.
+
+Default local endpoint:
+
+```txt
+http://127.0.0.1:1234/v1
+```
+
+You can choose the model, edit the system prompt, and add extra instructions before launching the scan.
+
+## Report Storage
+
+In web development, reports are written to:
+
+```txt
+gitleaks-web-reports/
+```
+
+In desktop production, reports are written to the app data directory.
 
 ## Build Checks
 
@@ -82,26 +152,12 @@ cd src-tauri
 cargo check
 ```
 
-## Packaging
-
-```bash
-cd desktop-ui
-npm run tauri:build
-```
-
-## Report Storage
-
-In web development, reports are written to:
-
-```txt
-gitleaks-web-reports/
-```
-
-In desktop production, reports are written to the app data directory.
-
 ## Brand
 
 LeakLane's mark represents two repository lanes crossing through a protected center point: source history enters, findings are surfaced, and the operator decides what moves forward.
 
 See `BRAND.md` for the lightweight brand notes.
 
+## Release Status
+
+`v0.1.0-alpha.1` is the first public alpha. It is useful for local validation and early feedback, but macOS builds are currently unsigned and not notarized.
