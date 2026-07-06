@@ -46,6 +46,7 @@
   let laneMap = new Map<string, number>();
 
   const graphLanes = [0, 1, 2, 3, 4];
+  const lanePalette = ['#2f8ab7', '#7a70c8', '#4fa46c', '#c47a3f', '#c45c73'];
 
   async function loadJobs() {
     loadingJobs = true;
@@ -165,6 +166,46 @@
 
   function commitLane(commit: RepositoryMapCommit, index: number) {
     return laneMap.get(commit.hash) ?? (commit.parents.length > 1 ? 2 : index % graphLanes.length);
+  }
+
+  function laneColor(lane: number) {
+    return lanePalette[((lane % lanePalette.length) + lanePalette.length) % lanePalette.length];
+  }
+
+  function commitColor(commit: RepositoryMapCommit, index: number) {
+    return laneColor(commitLane(commit, index));
+  }
+
+  function branchLane(branch: RepositoryMapBranch) {
+    return laneMap.get(branch.commit) ?? (branch.is_default ? 2 : 1);
+  }
+
+  function branchColor(branch: RepositoryMapBranch) {
+    return laneColor(branchLane(branch));
+  }
+
+  function tagColor(tag: RepositoryMapTag, map: RepositoryMap) {
+    const commit = commitByHash(tag.commit, map);
+    const index = commit ? map.commits.findIndex((item) => item.hash === commit.hash) : -1;
+    return commit && index >= 0 ? commitColor(commit, index) : 'var(--warn-ink)';
+  }
+
+  function edgePath(startX: number, startY: number, endX: number, endY: number) {
+    const controlOffset = Math.max(34, Math.abs(endX - startX) * 0.45);
+    const direction = endX >= startX ? 1 : -1;
+    const firstControlX = startX + controlOffset * direction;
+    const secondControlX = endX - controlOffset * direction;
+    return `M ${startX} ${startY} C ${firstControlX} ${startY}, ${secondControlX} ${endY}, ${endX} ${endY}`;
+  }
+
+  function branchLabelWidth(label: string) {
+    return Math.min(180, Math.max(74, 30 + label.length * 7));
+  }
+
+  function visibleBranchLegend(map: RepositoryMap) {
+    return [...map.branches]
+      .sort((left, right) => Number(right.is_default) - Number(left.is_default) || left.name.localeCompare(right.name))
+      .slice(0, 7);
   }
 
   function commitY(commit: RepositoryMapCommit, index: number) {
@@ -354,6 +395,23 @@
               <button class="ghost" type="button" disabled={loadingMap} on:click={() => loadMap(true)}>Aggiorna clone</button>
             </div>
 
+            {#if showBranches}
+              <div class="branch-color-legend" aria-label="Legenda colori branch">
+                {#each visibleBranchLegend(repoMap) as branch}
+                  <button
+                    class:default-branch={branch.is_default}
+                    class="branch-legend-chip"
+                    style={`--branch-color: ${branchColor(branch)}`}
+                    type="button"
+                    on:click={() => (selected = { type: 'branch', item: branch })}
+                  >
+                    <span></span>
+                    <strong>{branch.name}</strong>
+                  </button>
+                {/each}
+              </div>
+            {/if}
+
             <div
               class:dragging={isDragging}
               class="graph-scroll"
@@ -375,12 +433,19 @@
                   <line
                     class:default-lane={lane === 2}
                     class="lane-guide"
+                    style={`--lane-color: ${laneColor(lane)}`}
                     x1="36"
                     y1={laneY(lane)}
                     x2={graphWidth(repoMap) - 40}
                     y2={laneY(lane)}
                   />
-                  <text class:default-lane={lane === 2} class="lane-name" x="38" y={laneY(lane) - 12}>
+                  <text
+                    class:default-lane={lane === 2}
+                    class="lane-name"
+                    style={`--lane-color: ${laneColor(lane)}`}
+                    x="38"
+                    y={laneY(lane) - 12}
+                  >
                     {lane === 2 ? 'main lane' : `lane ${lane + 1}`}
                   </text>
                 {/each}
@@ -389,12 +454,10 @@
                     {@const parentIndex = commitIndex(parent, repoMap)}
                     {#if parentIndex >= 0}
                       {@const parentCommit = repoMap.commits[parentIndex]}
-                      <line
+                      <path
                         class="graph-edge"
-                        x1={commitX(index)}
-                        y1={commitY(commit, index)}
-                        x2={commitX(parentIndex)}
-                        y2={commitY(parentCommit, parentIndex)}
+                        d={edgePath(commitX(index), commitY(commit, index), commitX(parentIndex), commitY(parentCommit, parentIndex))}
+                        style={`--branch-color: ${commitColor(commit, index)}`}
                       />
                     {/if}
                   {/each}
@@ -404,8 +467,22 @@
                   {#each repoMap.tags as tag, index}
                     {@const tagIndex = commitIndex(tag.commit, repoMap)}
                     {#if tagIndex >= 0}
-                      <line class="tag-line" x1={commitX(tagIndex)} y1={graphHeight() - 72} x2={commitX(tagIndex)} y2={graphHeight() - 40} />
-                      <text class="tag-label" x={commitX(tagIndex) - 28} y={graphHeight() - 44 + (index % 2) * 16}>{tag.name}</text>
+                      <line
+                        class="tag-line"
+                        style={`--branch-color: ${tagColor(tag, repoMap)}`}
+                        x1={commitX(tagIndex)}
+                        y1={graphHeight() - 72}
+                        x2={commitX(tagIndex)}
+                        y2={graphHeight() - 40}
+                      />
+                      <text
+                        class="tag-label"
+                        style={`--branch-color: ${tagColor(tag, repoMap)}`}
+                        x={commitX(tagIndex) - 28}
+                        y={graphHeight() - 44 + (index % 2) * 16}
+                      >
+                        {tag.name}
+                      </text>
                     {/if}
                   {/each}
                 {/if}
@@ -414,8 +491,34 @@
                   {#each repoMap.branches as branch, index}
                     {@const branchIndex = commitIndex(branch.commit, repoMap)}
                     {#if branchIndex >= 0}
-                      <line class="branch-line" x1={commitX(branchIndex)} y1="28" x2={commitX(branchIndex)} y2="58" />
-                      <text class:default-branch={branch.is_default} class="branch-label" x={commitX(branchIndex) - 34} y={26 + (index % 2) * 16}>{branch.name}</text>
+                      <g
+                        class="branch-marker"
+                        role="button"
+                        tabindex="0"
+                        style={`--branch-color: ${branchColor(branch)}`}
+                        on:click={() => (selected = { type: 'branch', item: branch })}
+                        on:keydown={(event) => event.key === 'Enter' && (selected = { type: 'branch', item: branch })}
+                      >
+                        <line class="branch-line" x1={commitX(branchIndex)} y1="28" x2={commitX(branchIndex)} y2="58" />
+                        <rect
+                          class:default-branch={branch.is_default}
+                          class="branch-pill"
+                          x={commitX(branchIndex) - branchLabelWidth(branch.name) / 2}
+                          y={10 + (index % 2) * 20}
+                          width={branchLabelWidth(branch.name)}
+                          height="18"
+                          rx="9"
+                          ry="9"
+                        />
+                        <text
+                          class:default-branch={branch.is_default}
+                          class="branch-label"
+                          x={commitX(branchIndex) - branchLabelWidth(branch.name) / 2 + 10}
+                          y={23 + (index % 2) * 20}
+                        >
+                          {branch.name}
+                        </text>
+                      </g>
                     {/if}
                   {/each}
                 {/if}
@@ -426,8 +529,15 @@
                     {#if branch}
                       {@const prIndex = commitIndex(branch.commit, repoMap)}
                       {#if prIndex >= 0}
-                        <line class="pr-line" x1={commitX(prIndex)} y1="54" x2={commitX(prIndex) + 34} y2={78 + (index % 3) * 18} />
-                        <text class="pr-label" x={commitX(prIndex) + 38} y={82 + (index % 3) * 18}>PR #{pr.number}</text>
+                        <line
+                          class="pr-line"
+                          style={`--branch-color: ${branchColor(branch)}`}
+                          x1={commitX(prIndex)}
+                          y1="54"
+                          x2={commitX(prIndex) + 34}
+                          y2={78 + (index % 3) * 18}
+                        />
+                        <text class="pr-label" style={`--branch-color: ${branchColor(branch)}`} x={commitX(prIndex) + 38} y={82 + (index % 3) * 18}>PR #{pr.number}</text>
                       {/if}
                     {/if}
                   {/each}
@@ -440,6 +550,7 @@
                     class="commit-node"
                     role="button"
                     tabindex="0"
+                    style={`--branch-color: ${commitColor(commit, index)}`}
                     on:click={() => (selected = { type: 'commit', item: commit })}
                     on:keydown={(event) => event.key === 'Enter' && (selected = { type: 'commit', item: commit })}
                   >

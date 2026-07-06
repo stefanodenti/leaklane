@@ -1114,6 +1114,51 @@ textarea {
   cursor: grabbing;
 }
 
+.branch-color-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 12px;
+}
+
+.branch-legend-chip {
+  min-height: 32px;
+  border-color: color-mix(in srgb, var(--branch-color) 44%, var(--line));
+  background: color-mix(in srgb, var(--branch-color) 12%, var(--surface));
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 190px;
+  padding: 6px 10px;
+}
+
+.branch-legend-chip:hover,
+.branch-legend-chip:focus {
+  border-color: color-mix(in srgb, var(--branch-color) 76%, var(--line));
+  background: color-mix(in srgb, var(--branch-color) 18%, var(--surface));
+}
+
+.branch-legend-chip span {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--branch-color);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--branch-color) 16%, transparent);
+  flex: 0 0 auto;
+}
+
+.branch-legend-chip strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branch-legend-chip.default-branch {
+  font-weight: 860;
+}
+
 .commit-graph {
   display: block;
   min-width: 100%;
@@ -1121,17 +1166,19 @@ textarea {
 }
 
 .lane-guide {
-  stroke: color-mix(in srgb, var(--line) 82%, transparent);
+  stroke: color-mix(in srgb, var(--lane-color) 34%, var(--line));
   stroke-width: 1;
+  stroke-dasharray: 3 10;
 }
 
 .lane-guide.default-lane {
-  stroke: color-mix(in srgb, var(--accent) 38%, var(--line));
+  stroke: color-mix(in srgb, var(--lane-color) 56%, var(--line));
   stroke-width: 1.5;
+  stroke-dasharray: none;
 }
 
 .lane-name {
-  fill: color-mix(in srgb, var(--muted) 72%, transparent);
+  fill: color-mix(in srgb, var(--lane-color) 72%, var(--muted));
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-size: 0.66rem;
   font-weight: 760;
@@ -1140,28 +1187,54 @@ textarea {
 }
 
 .lane-name.default-lane {
-  fill: var(--accent-ink);
+  fill: color-mix(in srgb, var(--lane-color) 84%, var(--ink));
 }
 
 .graph-edge {
-  stroke: color-mix(in srgb, var(--muted) 56%, transparent);
-  stroke-width: 2;
+  fill: none;
+  stroke: var(--branch-color);
+  stroke-linecap: round;
+  stroke-width: 3;
+  opacity: 0.72;
 }
 
 .branch-line,
 .tag-line,
 .pr-line {
-  stroke: color-mix(in srgb, var(--accent) 55%, var(--line));
-  stroke-dasharray: 4 5;
+  stroke: var(--branch-color);
+  stroke-dasharray: 3 5;
+  stroke-linecap: round;
   stroke-width: 1.5;
 }
 
 .tag-line {
-  stroke: color-mix(in srgb, var(--warn-ink) 70%, var(--line));
+  opacity: 0.76;
 }
 
 .pr-line {
-  stroke: color-mix(in srgb, var(--clean-ink) 64%, var(--line));
+  opacity: 0.8;
+}
+
+.branch-marker {
+  cursor: pointer;
+  outline: none;
+}
+
+.branch-pill {
+  fill: color-mix(in srgb, var(--branch-color) 16%, var(--surface));
+  stroke: color-mix(in srgb, var(--branch-color) 68%, var(--line));
+  stroke-width: 1;
+  rx: 9px;
+}
+
+.branch-marker:hover .branch-pill,
+.branch-marker:focus .branch-pill {
+  fill: color-mix(in srgb, var(--branch-color) 26%, var(--surface));
+  stroke-width: 1.5;
+}
+
+.branch-pill.default-branch {
+  fill: color-mix(in srgb, var(--branch-color) 24%, var(--surface));
 }
 
 .commit-node {
@@ -1171,7 +1244,7 @@ textarea {
 
 .commit-node circle {
   fill: var(--surface);
-  stroke: var(--accent);
+  stroke: var(--branch-color);
   stroke-width: 2.4;
   transition:
     fill 160ms ease,
@@ -1182,13 +1255,13 @@ textarea {
 .commit-node:hover circle,
 .commit-node:focus circle,
 .commit-node.selected-commit circle {
-  fill: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  fill: color-mix(in srgb, var(--branch-color) 18%, var(--surface));
   stroke-width: 3.4;
 }
 
 .commit-node.hot-commit circle {
   fill: var(--danger-bg);
-  stroke: var(--danger-ink);
+  stroke: var(--branch-color);
 }
 
 .commit-node text,
@@ -1209,15 +1282,15 @@ textarea {
 }
 
 .branch-label.default-branch {
-  fill: var(--accent-ink);
+  fill: var(--ink);
 }
 
 .tag-label {
-  fill: var(--warn-ink);
+  fill: color-mix(in srgb, var(--branch-color) 82%, var(--warn-ink));
 }
 
 .pr-label {
-  fill: var(--clean-ink);
+  fill: color-mix(in srgb, var(--branch-color) 82%, var(--clean-ink));
   font-weight: 820;
 }
 
