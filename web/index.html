@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>LeakLane</title>
+    <link rel="icon" href="/brand/leaklane-mark.svg">
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="topbar">
+        <div>
+          <p class="eyebrow">Local secret triage</p>
+          <h1>LeakLane</h1>
+        </div>
+        <div class="top-actions">
+          <label class="theme-control" for="themeMode">
+            <span>Tema</span>
+            <select id="themeMode">
+              <option value="system">System</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </label>
+          <div class="status-pill" id="globalStatus">Pronto</div>
+        </div>
+      </section>
+
+      <section class="workflow-nav" aria-label="Fasi operative">
+        <div><span>01</span> Pitlane repo</div>
+        <div><span>02</span> Setup analisi</div>
+        <div><span>03</span> Report intelligente</div>
+      </section>
+
+      <section class="risk-pane phase-card" aria-label="Dashboard rischio organizzazioni">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Risk dashboard</p>
+            <h2>Quadro organizzazioni</h2>
+          </div>
+          <div class="dashboard-actions">
+            <div id="dashboardUpdated" class="job-meta">Non aggiornato</div>
+            <button id="refreshDashboard" class="ghost" type="button">Aggiorna</button>
+          </div>
+        </div>
+
+        <div id="dashboardOverview" class="dashboard-overview">
+          <div class="empty">Caricamento quadro rischio.</div>
+        </div>
+
+        <div class="risk-layout">
+          <div>
+            <div class="subsection-title">
+              <h3>Organizzazioni</h3>
+              <span>Ultima scansione per repository</span>
+            </div>
+            <div id="dashboardOrganizations" class="organization-list empty">
+              Nessuna organizzazione disponibile.
+            </div>
+          </div>
+          <div class="risk-side">
+            <div>
+              <div class="subsection-title">
+                <h3>Hotspot</h3>
+                <span>Repository piu' esposti</span>
+              </div>
+              <div id="dashboardHotspots" class="hotspot-list empty">
+                Nessun hotspot disponibile.
+              </div>
+            </div>
+            <div>
+              <div class="subsection-title">
+                <h3>Trend recente</h3>
+                <span>Ultime esecuzioni</span>
+              </div>
+              <div id="dashboardTimeline" class="timeline-list empty">
+                Nessuna esecuzione disponibile.
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="diff-pane phase-card" aria-label="Confronto scansioni">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Scan diff</p>
+            <h2>Delta scansioni</h2>
+          </div>
+          <div class="dashboard-actions">
+            <div id="diffUpdated" class="job-meta">Non aggiornato</div>
+            <button id="refreshDiffs" class="ghost" type="button">Aggiorna</button>
+          </div>
+        </div>
+        <div id="diffOverview" class="dashboard-overview">
+          <div class="empty">Caricamento confronti.</div>
+        </div>
+        <div id="diffResults" class="diff-list empty">
+          Nessun confronto disponibile.
+        </div>
+      </section>
+
+      <section class="workspace">
+        <aside class="search-pane phase-card">
+          <div class="phase-heading">
+            <p class="eyebrow">Fase 1</p>
+            <h2>Pitlane di lancio</h2>
+          </div>
+          <section class="github-access" aria-label="Accesso GitHub CLI">
+            <div>
+              <p class="eyebrow">GitHub access</p>
+              <h3 id="githubStatusTitle">Verifica CLI in corso</h3>
+              <p id="githubStatusText">Controllo se GitHub CLI e' pronta per leggere anche repository privati.</p>
+            </div>
+            <button id="refreshGithub" class="ghost" type="button">Verifica</button>
+          </section>
+          <form id="searchForm" class="search-form">
+            <label for="query">Cerca repository GitHub</label>
+            <div class="search-row">
+              <input id="query" name="query" type="search" placeholder="owner/repo, framework, azienda..." autocomplete="off">
+              <button type="submit">Cerca</button>
+            </div>
+            <p class="hint">Se GitHub CLI e' collegata, la ricerca include anche i repository privati accessibili dal tuo account.</p>
+          </form>
+          <div id="searchError" class="inline-error" hidden></div>
+          <div id="searchResults" class="result-list"></div>
+        </aside>
+
+        <div class="setup-stack">
+          <section class="list-pane phase-card">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Staging</p>
+                <h2 id="listTitle">0 repository</h2>
+              </div>
+              <button id="clearList" class="ghost" type="button">Svuota</button>
+            </div>
+
+            <div class="manual-add">
+              <label for="manualUrl">Aggiungi URL manualmente</label>
+              <div class="search-row">
+                <input id="manualUrl" type="url" placeholder="https://github.com/owner/repo oppure https://bitbucket.org/workspace/repo">
+                <button id="addManual" type="button">Aggiungi</button>
+              </div>
+            </div>
+
+            <div id="selectedRepos" class="selected-list empty">
+              Nessun repository selezionato.
+            </div>
+          </section>
+
+          <section class="setup-pane phase-card">
+            <div class="phase-heading">
+              <p class="eyebrow">Fase 2</p>
+              <h2>Setup analisi</h2>
+            </div>
+            <div class="setup-grid">
+              <div>
+                <label for="mode">Modalita' Gitleaks</label>
+                <select id="mode">
+                  <option value="git">Storia Git completa</option>
+                  <option value="dir">Solo file correnti</option>
+                </select>
+              </div>
+              <div>
+                <label for="timeout">Timeout per repo</label>
+                <input id="timeout" type="number" min="0" step="30" value="300">
+              </div>
+            </div>
+
+            <div class="llm-box">
+              <div class="panel-header compact">
+                <div>
+                  <p class="eyebrow">LM Studio</p>
+                  <h3>Configurazione locale</h3>
+                </div>
+                <button id="refreshModels" class="ghost" type="button">Aggiorna modelli</button>
+              </div>
+              <div id="lmStatus" class="hint">LM Studio non verificato.</div>
+              <div class="setup-grid">
+                <div>
+                  <label for="aiModel">Modello AI</label>
+                  <select id="aiModel">
+                    <option value="">Automatico</option>
+                  </select>
+                </div>
+                <label class="checkbox-row" for="autoAi">
+                  <input id="autoAi" type="checkbox" checked>
+                  <span>Genera analisi AI a fine scan</span>
+                </label>
+              </div>
+              <label for="aiSystemPrompt">System prompt</label>
+              <textarea id="aiSystemPrompt" rows="4">Sei un senior application security engineer. Analizza finding Gitleaks gia' redatti. Non inventare secret e non affermare che una credenziale sia valida se non puoi verificarlo. Scrivi in italiano, con tono operativo e conciso.</textarea>
+              <label for="aiAdditionalInstructions">Specifiche addizionali</label>
+              <textarea id="aiAdditionalInstructions" rows="3" placeholder="Esempio: privilegia falsi positivi, sintetizza per CTO, oppure raggruppa per team."></textarea>
+            </div>
+
+            <button id="startScan" class="primary launch-button" type="button">Avvia verifica</button>
+          </section>
+        </div>
+      </section>
+
+      <section class="history-pane">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Esecuzioni salvate</p>
+            <h2>Archivio verifiche</h2>
+          </div>
+          <button id="refreshJobs" class="ghost" type="button">Aggiorna</button>
+        </div>
+        <div id="savedJobs" class="saved-jobs empty">
+          Nessuna esecuzione salvata.
+        </div>
+      </section>
+
+      <section class="report-pane phase-card">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Fase 3</p>
+            <h2 id="reportTitle">Nessuna scansione avviata</h2>
+          </div>
+          <div id="jobMeta" class="job-meta"></div>
+        </div>
+        <div id="logs" class="logs"></div>
+        <div id="reportResults" class="report-results empty">
+          I risultati appariranno qui durante la verifica.
+        </div>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

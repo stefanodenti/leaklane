@@ -1,0 +1,4 @@
+# One public GitHub repository URL per line.
+# Examples:
+# https://github.com/gitleaks/gitleaks
+# https://github.com/octocat/Hello-World
