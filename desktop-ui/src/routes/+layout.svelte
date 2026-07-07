@@ -2,6 +2,7 @@
   import { browser } from '$app/environment';
   import { page } from '$app/state';
   import { onMount } from 'svelte';
+  import packageJson from '../../package.json';
   import '../app.css';
 
   const navItems = [
@@ -15,6 +16,7 @@
   ];
   const backendUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8787';
   const backendLabel = backendUrl.replace(/^https?:\/\//, '');
+  const appVersion = packageJson.version;
 
   let sidebarCollapsed = false;
 
@@ -81,6 +83,8 @@
       <i aria-hidden="true"></i>
       <span>Backend locale</span>
       <strong>{backendLabel}</strong>
+      <span>Versione app</span>
+      <strong>{appVersion}</strong>
     </div>
   </aside>
 

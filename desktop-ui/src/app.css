@@ -286,6 +286,16 @@ nav a:hover {
   font-size: 0.76rem;
 }
 
+.sidebar-status strong + span {
+  margin-top: 6px;
+}
+
+.sidebar-status strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .page-frame {
   width: min(1680px, 100%);
   padding: 28px;
