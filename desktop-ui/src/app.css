@@ -1800,6 +1800,46 @@ textarea {
   gap: 12px;
 }
 
+.map-delta-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.map-delta-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.map-delta-grid div {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  display: grid;
+  gap: 4px;
+  padding: 11px;
+}
+
+.map-delta-grid strong {
+  font-size: 1.2rem;
+}
+
+.map-delta-grid span,
+.map-delta-list span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.map-delta-list {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px;
+}
+
 .map-ai-loading,
 .map-ai-empty {
   border: 1px solid var(--line);
@@ -2158,6 +2198,7 @@ textarea {
   .repo-map-grid,
   .repo-secondary-grid,
   .map-finding-grid,
+  .map-delta-grid,
   .drawer-grid,
   .drawer-meta-grid,
   .settings-grid.two,

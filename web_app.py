@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import shutil
 import subprocess
@@ -36,6 +37,7 @@ from scan_public_repos import (
 ROOT = Path(__file__).resolve().parent
 STATIC_DIR = ROOT / "web"
 REPORT_ROOT = Path(os.environ.get("REPO_SCANNER_REPORT_ROOT", ROOT / "gitleaks-web-reports")).expanduser()
+REPOSITORY_MAP_ROOT = REPORT_ROOT / "repository-maps"
 BACKEND_VERSION = "0.2.0-alpha.1"
 LM_STUDIO_BASE_URL = "http://127.0.0.1:1234/v1"
 AI_ANALYSIS_FINDING_LIMIT = 6
@@ -364,11 +366,17 @@ class Handler(SimpleHTTPRequestHandler):
         query = urllib.parse.parse_qs(parsed.query)
         url = query.get("url", [""])[0].strip()
         refresh = query.get("refresh", ["0"])[0].strip() in {"1", "true", "yes"}
+        force = query.get("force", ["0"])[0].strip() in {"1", "true", "yes"}
+        mode = query.get("mode", ["stored"])[0].strip()
+        if force:
+            mode = "force"
+        elif refresh:
+            mode = "delta"
         if not url:
             self.send_json({"error": "Repository URL is required."}, HTTPStatus.BAD_REQUEST)
             return
         try:
-            payload = repository_map(normalize_repo_url(url), refresh=refresh)
+            payload = repository_map(normalize_repo_url(url), mode=mode)
         except Exception as exc:
             self.send_json({"error": str(exc)}, HTTPStatus.BAD_GATEWAY)
             return
@@ -787,13 +795,21 @@ def openapi_spec() -> dict:
             "/api/repository-map": {
                 "get": {
                     "tags": ["Repository map"],
-                    "summary": "Generate or read cached repository structure map",
+                    "summary": "Read, update, or force-regenerate a persisted repository structure map",
                     "parameters": [
                         {"name": "url", "in": "query", "required": True, "schema": {"type": "string"}},
-                        {"name": "refresh", "in": "query", "required": False, "schema": {"type": "boolean"}},
+                        {
+                            "name": "mode",
+                            "in": "query",
+                            "required": False,
+                            "schema": {"type": "string", "enum": ["stored", "delta", "force"], "default": "stored"},
+                            "description": "stored reads the saved map or creates one; delta regenerates and compares with the saved map; force regenerates without delta.",
+                        },
+                        {"name": "refresh", "in": "query", "required": False, "schema": {"type": "boolean"}, "deprecated": True},
+                        {"name": "force", "in": "query", "required": False, "schema": {"type": "boolean"}, "deprecated": True},
                     ],
                     "responses": {
-                        "200": {"description": "Repository branch, tag, PR, commit, and finding overlay"},
+                        "200": {"description": "Persisted repository branch, tag, PR, commit, finding overlay, and optional delta"},
                         "502": {"description": "Map generation error", "content": {"application/json": {"schema": error_schema}}},
                     },
                 }
@@ -1222,22 +1238,45 @@ def scan_diffs() -> dict:
     }
 
 
-def repository_map(url: str, refresh: bool = False) -> dict:
-    require_command("git")
+def repository_map(url: str, mode: str = "stored") -> dict:
+    if mode not in {"stored", "delta", "force"}:
+        raise RuntimeError("Invalid repository map mode.")
     if not urllib.parse.urlparse(url).scheme.startswith("http"):
         raise RuntimeError("Only HTTP(S) repository URLs are supported.")
 
     cache_key = normalize_repo_key(url)
     cached = repository_map_cache.get(cache_key)
-    if cached and not refresh and time.time() - cached[0] < REPOSITORY_MAP_CACHE_SECONDS:
+    if mode == "stored" and cached and time.time() - cached[0] < REPOSITORY_MAP_CACHE_SECONDS:
         payload = json.loads(json.dumps(cached[1]))
         payload["cache"] = {
             "hit": True,
             "generated_at": cached[0],
             "ttl_seconds": REPOSITORY_MAP_CACHE_SECONDS,
         }
+        payload["storage"] = {
+            **payload.get("storage", {}),
+            "hit": bool(payload.get("storage", {}).get("saved_at")),
+            "mode": "memory",
+        }
         return payload
 
+    previous = load_repository_map(url)
+    if mode == "stored" and previous:
+        payload = json.loads(json.dumps(previous))
+        payload["cache"] = {
+            "hit": False,
+            "generated_at": payload.get("updated_at") or payload.get("storage", {}).get("saved_at") or time.time(),
+            "ttl_seconds": REPOSITORY_MAP_CACHE_SECONDS,
+        }
+        payload["storage"] = {
+            **payload.get("storage", {}),
+            "hit": True,
+            "mode": "stored",
+        }
+        repository_map_cache[cache_key] = (time.time(), payload)
+        return payload
+
+    require_command("git")
     latest = latest_repo_result(url)
     with tempfile.TemporaryDirectory(prefix="leaklane-repo-map-") as tmp:
         repo_path = Path(tmp) / repo_name_from_url(url)
@@ -1255,6 +1294,7 @@ def repository_map(url: str, refresh: bool = False) -> dict:
     stale_threshold = time.time() - (90 * 24 * 60 * 60)
     stale_branches = sum(1 for branch in branches if branch.get("updated_at") and branch["updated_at"] < stale_threshold)
     generated_at = time.time()
+    map_path = repository_map_path(url)
     payload = {
         "repository": {
             "name": repo_name_from_url(url),
@@ -1289,6 +1329,24 @@ def repository_map(url: str, refresh: bool = False) -> dict:
             "tags": len(tags) >= REPOSITORY_MAP_TAG_LIMIT,
             "pull_requests": len(prs) >= REPOSITORY_MAP_PR_LIMIT,
         },
+        "delta": repository_map_delta(previous, {
+            "branches": branches,
+            "tags": tags,
+            "pull_requests": prs,
+            "commits": commits,
+            "findings": repository_map_findings(latest["items"]),
+            "repository": {
+                "default_branch": default_branch,
+            },
+            "updated_at": generated_at,
+        }) if previous and mode == "delta" else None,
+        "storage": {
+            "hit": False,
+            "mode": mode,
+            "path": str(map_path),
+            "saved_at": generated_at,
+            "previous_saved_at": previous.get("storage", {}).get("saved_at") or previous.get("updated_at") if previous else None,
+        },
         "cache": {
             "hit": False,
             "generated_at": generated_at,
@@ -1296,8 +1354,161 @@ def repository_map(url: str, refresh: bool = False) -> dict:
         },
         "updated_at": generated_at,
     }
+    save_repository_map(payload)
     repository_map_cache[cache_key] = (generated_at, payload)
     return payload
+
+
+def repository_map_path(url: str) -> Path:
+    key = normalize_repo_key(url)
+    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:12]
+    slug = "".join(character if character.isalnum() else "-" for character in key.lower()).strip("-")
+    slug = "-".join(part for part in slug.split("-") if part)[:88] or "repository"
+    return REPOSITORY_MAP_ROOT / f"{slug}-{digest}.json"
+
+
+def load_repository_map(url: str) -> dict | None:
+    path = repository_map_path(url)
+    if not path.exists():
+        return None
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        payload.setdefault("storage", {})
+        payload["storage"] = {
+            **payload["storage"],
+            "hit": True,
+            "path": str(path),
+            "saved_at": payload["storage"].get("saved_at") or payload.get("updated_at") or path.stat().st_mtime,
+        }
+        return payload
+    except Exception:
+        return None
+
+
+def save_repository_map(payload: dict) -> None:
+    url = payload.get("repository", {}).get("url") or ""
+    if not url:
+        return
+    path = repository_map_path(url)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(".json.tmp")
+    with tmp_path.open("w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2)
+        handle.write("\n")
+    tmp_path.replace(path)
+
+
+def repository_map_delta(previous: dict | None, current: dict) -> dict | None:
+    if not previous:
+        return None
+    previous_commits = {item.get("hash"): item for item in previous.get("commits", []) if item.get("hash")}
+    current_commits = {item.get("hash"): item for item in current.get("commits", []) if item.get("hash")}
+    previous_branches = {item.get("name"): item for item in previous.get("branches", []) if item.get("name")}
+    current_branches = {item.get("name"): item for item in current.get("branches", []) if item.get("name")}
+    previous_tags = {item.get("name"): item for item in previous.get("tags", []) if item.get("name")}
+    current_tags = {item.get("name"): item for item in current.get("tags", []) if item.get("name")}
+    previous_prs = {str(item.get("number")): item for item in previous.get("pull_requests", []) if item.get("number") is not None}
+    current_prs = {str(item.get("number")): item for item in current.get("pull_requests", []) if item.get("number") is not None}
+    previous_findings = finding_map(previous.get("findings", []))
+    current_findings = finding_map(current.get("findings", []))
+
+    changed_branches = [
+        name for name in sorted(set(previous_branches) & set(current_branches))
+        if previous_branches[name].get("commit") != current_branches[name].get("commit")
+    ]
+    changed_prs = [
+        number for number in sorted(set(previous_prs) & set(current_prs))
+        if (
+            previous_prs[number].get("state"),
+            previous_prs[number].get("head"),
+            previous_prs[number].get("base"),
+            previous_prs[number].get("is_draft"),
+        )
+        != (
+            current_prs[number].get("state"),
+            current_prs[number].get("head"),
+            current_prs[number].get("base"),
+            current_prs[number].get("is_draft"),
+        )
+    ]
+    new_finding_keys = sorted(set(current_findings) - set(previous_findings))
+    resolved_finding_keys = sorted(set(previous_findings) - set(current_findings))
+
+    return {
+        "generated_at": time.time(),
+        "previous_map_at": previous.get("updated_at"),
+        "current_map_at": current.get("updated_at"),
+        "default_branch_changed": previous.get("repository", {}).get("default_branch") != current.get("repository", {}).get("default_branch"),
+        "commits": {
+            "new": len(set(current_commits) - set(previous_commits)),
+            "removed": len(set(previous_commits) - set(current_commits)),
+            "new_items": [commit_preview(current_commits[key]) for key in sorted(set(current_commits) - set(previous_commits))[:8]],
+        },
+        "branches": {
+            "new": len(set(current_branches) - set(previous_branches)),
+            "removed": len(set(previous_branches) - set(current_branches)),
+            "changed": len(changed_branches),
+            "changed_items": [branch_delta_preview(previous_branches[name], current_branches[name]) for name in changed_branches[:8]],
+        },
+        "tags": {
+            "new": len(set(current_tags) - set(previous_tags)),
+            "removed": len(set(previous_tags) - set(current_tags)),
+            "new_items": [tag_preview(current_tags[key]) for key in sorted(set(current_tags) - set(previous_tags))[:8]],
+        },
+        "pull_requests": {
+            "new": len(set(current_prs) - set(previous_prs)),
+            "removed": len(set(previous_prs) - set(current_prs)),
+            "changed": len(changed_prs),
+            "changed_items": [pr_delta_preview(previous_prs[number], current_prs[number]) for number in changed_prs[:8]],
+        },
+        "findings": {
+            "new": len(new_finding_keys),
+            "resolved": len(resolved_finding_keys),
+            "unchanged": len(set(current_findings) & set(previous_findings)),
+            "delta": len(new_finding_keys) - len(resolved_finding_keys),
+            "new_items": [finding_preview(current_findings[key]) for key in new_finding_keys[:8]],
+            "resolved_items": [finding_preview(previous_findings[key]) for key in resolved_finding_keys[:8]],
+        },
+    }
+
+
+def commit_preview(item: dict) -> dict:
+    return {
+        "short": item.get("short"),
+        "timestamp": item.get("timestamp"),
+        "author": item.get("author"),
+        "subject": item.get("subject"),
+        "findings": item.get("findings", 0),
+    }
+
+
+def branch_delta_preview(previous: dict, current: dict) -> dict:
+    return {
+        "name": current.get("name"),
+        "previous": previous.get("short") or str(previous.get("commit") or "")[:8],
+        "current": current.get("short") or str(current.get("commit") or "")[:8],
+        "findings": current.get("findings", 0),
+    }
+
+
+def tag_preview(item: dict) -> dict:
+    return {
+        "name": item.get("name"),
+        "short": item.get("short"),
+        "created_at": item.get("created_at"),
+    }
+
+
+def pr_delta_preview(previous: dict, current: dict) -> dict:
+    return {
+        "number": current.get("number"),
+        "title": current.get("title"),
+        "previous_state": previous.get("state"),
+        "current_state": current.get("state"),
+        "head": current.get("head"),
+        "base": current.get("base"),
+    }
 
 
 def clone_repo_for_map(url: str, target: Path) -> subprocess.CompletedProcess[str]:

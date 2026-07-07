@@ -60,9 +60,9 @@ export function getDiffs() {
   return request<DiffResponse>('/api/diffs');
 }
 
-export function getRepositoryMap(url: string, refresh = false) {
+export function getRepositoryMap(url: string, mode: 'stored' | 'delta' | 'force' = 'stored') {
   const query = new URLSearchParams({ url });
-  if (refresh) query.set('refresh', '1');
+  query.set('mode', mode);
   return request<RepositoryMap>(`/api/repository-map?${query.toString()}`);
 }
 

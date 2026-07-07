@@ -316,6 +316,14 @@ export type RepositoryMap = {
   pull_requests: RepositoryPullRequest[];
   commits: RepositoryMapCommit[];
   findings: RepositoryMapFinding[];
+  delta?: RepositoryMapDelta | null;
+  storage?: {
+    hit: boolean;
+    mode: string;
+    path?: string | null;
+    saved_at?: number | null;
+    previous_saved_at?: number | null;
+  };
   limits?: {
     commits: number;
     branches: number;
@@ -334,6 +342,50 @@ export type RepositoryMap = {
     ttl_seconds: number;
   };
   updated_at: number;
+};
+
+export type RepositoryMapDelta = {
+  generated_at: number;
+  previous_map_at?: number | null;
+  current_map_at?: number | null;
+  default_branch_changed: boolean;
+  commits: {
+    new: number;
+    removed: number;
+    new_items: Array<{ short?: string; timestamp?: number; author?: string; subject?: string; findings?: number }>;
+  };
+  branches: {
+    new: number;
+    removed: number;
+    changed: number;
+    changed_items: Array<{ name?: string; previous?: string; current?: string; findings?: number }>;
+  };
+  tags: {
+    new: number;
+    removed: number;
+    new_items: Array<{ name?: string; short?: string; created_at?: number }>;
+  };
+  pull_requests: {
+    new: number;
+    removed: number;
+    changed: number;
+    changed_items: Array<{
+      number?: number;
+      title?: string;
+      previous_state?: string;
+      current_state?: string;
+      head?: string;
+      base?: string;
+    }>;
+  };
+  findings: {
+    new: number;
+    resolved: number;
+    unchanged: number;
+    delta: number;
+    new_items: FindingPreview[];
+    resolved_items: FindingPreview[];
+  };
 };
 
 export type RepositoryMapAiAnalysis = {

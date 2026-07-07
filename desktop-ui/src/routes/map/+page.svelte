@@ -108,7 +108,7 @@
     }
   }
 
-  async function loadMap(refresh = false) {
+  async function loadMap(mode: 'stored' | 'delta' | 'force' = 'stored') {
     if (!selectedUrl || loadingMap) return;
     loadingMap = true;
     mapError = '';
@@ -116,7 +116,7 @@
     mapAiAnalysis = null;
     selected = null;
     try {
-      repoMap = await getRepositoryMap(selectedUrl, refresh);
+      repoMap = await getRepositoryMap(selectedUrl, mode);
       laneMap = buildLaneMap(repoMap);
       selected = repoMap.commits[0] ? { type: 'commit', item: repoMap.commits[0] } : null;
       await tick();
@@ -558,6 +558,35 @@
     return parts.length ? `Vista parziale: ultimi ${parts.join(', ')}` : 'Vista completa entro i limiti letti';
   }
 
+  function mapStorageLabel(map: RepositoryMap) {
+    if (map.storage?.mode === 'stored') return `Salvata ${formatDate(map.storage.saved_at || map.updated_at)}`;
+    if (map.storage?.mode === 'delta') return `Delta aggiornato ${formatDate(map.storage.saved_at || map.updated_at)}`;
+    if (map.storage?.mode === 'force') return `Rigenerata ${formatDate(map.storage.saved_at || map.updated_at)}`;
+    if (map.storage?.mode === 'memory') return `Salvata ${formatDate(map.storage.saved_at || map.updated_at)} | cache`;
+    if (map.cache?.hit) return 'Cache memoria';
+    return `Generata ${formatDate(map.updated_at)}`;
+  }
+
+  function hasMapDelta(map: RepositoryMap) {
+    const delta = map.delta;
+    if (!delta) return false;
+    return (
+      delta.commits.new > 0 ||
+      delta.commits.removed > 0 ||
+      delta.branches.new > 0 ||
+      delta.branches.removed > 0 ||
+      delta.branches.changed > 0 ||
+      delta.tags.new > 0 ||
+      delta.tags.removed > 0 ||
+      delta.pull_requests.new > 0 ||
+      delta.pull_requests.removed > 0 ||
+      delta.pull_requests.changed > 0 ||
+      delta.findings.new > 0 ||
+      delta.findings.resolved > 0 ||
+      delta.default_branch_changed
+    );
+  }
+
   function startPan(event: PointerEvent) {
     const target = event.currentTarget as HTMLElement;
     isDragging = true;
@@ -623,8 +652,8 @@
     <p class="eyebrow">Repository intelligence</p>
     <h2>Mappa repo</h2>
   </div>
-  <button class="ghost" type="button" disabled={!selectedUrl || loadingMap} on:click={() => loadMap(false)}>
-    {loadingMap ? 'Analisi in corso' : 'Genera mappa'}
+  <button class="ghost" type="button" disabled={!selectedUrl || loadingMap} on:click={() => loadMap('stored')}>
+    {loadingMap ? 'Analisi in corso' : 'Apri mappa'}
   </button>
 </section>
 
@@ -716,7 +745,7 @@
             </div>
             <div class="map-coverage-strip" class:partial={repoMap.truncated && Object.values(repoMap.truncated).some(Boolean)}>
               <span>{mapCoverageLabel(repoMap)}</span>
-              <span>Generata {formatDate(repoMap.updated_at)}</span>
+              <span>{mapStorageLabel(repoMap)}</span>
             </div>
 
             <div class="map-toolbar" aria-label="Controlli mappa repository">
@@ -730,7 +759,8 @@
               <label><input type="checkbox" bind:checked={showTags} /> Tag</label>
               <label><input type="checkbox" bind:checked={showPullRequests} /> PR</label>
               <label><input type="checkbox" bind:checked={showFindings} /> Finding</label>
-              <button class="ghost" type="button" disabled={loadingMap} on:click={() => loadMap(true)}>Aggiorna clone</button>
+              <button class="ghost" type="button" disabled={loadingMap} on:click={() => loadMap('delta')}>Aggiorna delta</button>
+              <button class="ghost" type="button" disabled={loadingMap} on:click={() => loadMap('force')}>Rigenera tutto</button>
               <button class="ghost ai-map-action" type="button" disabled={mapAiLoading} on:click={runMapAiAnalysis}>
                 {mapAiLoading ? 'AI in corso' : mapAiAnalysis ? 'Rigenera analisi AI' : 'Analizza con AI'}
               </button>
@@ -924,6 +954,45 @@
           </div>
 
         </section>
+
+        {#if repoMap.delta}
+          <section class="panel map-delta-panel">
+            <div class="section-title">
+              <div>
+                <p class="eyebrow">Delta mappa</p>
+                <h3>{hasMapDelta(repoMap) ? "Cambiamenti dall'ultimo snapshot" : 'Nessuna variazione rilevante'}</h3>
+              </div>
+              <span>{formatDate(repoMap.delta.generated_at)}</span>
+            </div>
+            <div class="map-delta-grid">
+              <div>
+                <strong>{formatNumber(repoMap.delta.commits.new)}</strong>
+                <span>Commit nuovi</span>
+              </div>
+              <div>
+                <strong>{formatNumber(repoMap.delta.branches.changed + repoMap.delta.branches.new)}</strong>
+                <span>Branch mossi/nuovi</span>
+              </div>
+              <div>
+                <strong>{formatNumber(repoMap.delta.pull_requests.changed + repoMap.delta.pull_requests.new)}</strong>
+                <span>PR cambiate/nuove</span>
+              </div>
+              <div>
+                <strong class:risk-critical={repoMap.delta.findings.delta > 0} class:risk-clean={repoMap.delta.findings.delta < 0}>
+                  {repoMap.delta.findings.delta > 0 ? '+' : ''}{formatNumber(repoMap.delta.findings.delta)}
+                </strong>
+                <span>Delta finding</span>
+              </div>
+            </div>
+            {#if repoMap.delta.branches.changed_items.length}
+              <div class="map-delta-list">
+                {#each repoMap.delta.branches.changed_items as branch}
+                  <span>{branch.name}: {branch.previous} -> {branch.current}</span>
+                {/each}
+              </div>
+            {/if}
+          </section>
+        {/if}
 
         <section class="panel map-ai-panel">
           <div class="section-title">
@@ -1248,7 +1317,7 @@
             LeakLane usera' un clone temporaneo per leggere branch, tag, ultimi commit e PR GitHub.
             I finding dell'ultima scansione vengono sovrapposti ai commit quando il report contiene l'hash.
           </p>
-          <button type="button" disabled={!selectedUrl} on:click={() => loadMap(false)}>Genera mappa repository</button>
+          <button type="button" disabled={!selectedUrl} on:click={() => loadMap('stored')}>Apri mappa repository</button>
         </section>
       {/if}
     </div>
