@@ -36,6 +36,7 @@ from scan_public_repos import (
 ROOT = Path(__file__).resolve().parent
 STATIC_DIR = ROOT / "web"
 REPORT_ROOT = Path(os.environ.get("REPO_SCANNER_REPORT_ROOT", ROOT / "gitleaks-web-reports")).expanduser()
+BACKEND_VERSION = "0.2.0-alpha.1"
 LM_STUDIO_BASE_URL = "http://127.0.0.1:1234/v1"
 AI_ANALYSIS_FINDING_LIMIT = 6
 AI_ANALYSIS_MAX_TOKENS = 4096
@@ -147,6 +148,12 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if parsed.path == "/brand/leaklane-mark.svg":
             self.serve_file(STATIC_DIR / "brand" / "leaklane-mark.svg", "image/svg+xml; charset=utf-8")
+            return
+        if parsed.path == "/docs":
+            self.serve_openapi_docs()
+            return
+        if parsed.path == "/openapi.json":
+            self.send_json(openapi_spec())
             return
         if parsed.path == "/api/search":
             self.handle_search(parsed)
@@ -488,6 +495,15 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def serve_openapi_docs(self) -> None:
+        data = openapi_docs_html().encode("utf-8")
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     def read_json(self) -> dict:
         length = int(self.headers.get("Content-Length", "0"))
         if length <= 0:
@@ -591,10 +607,273 @@ def health_status() -> dict:
     return {
         "ok": True,
         "service": "leaklane",
-        "version": "0.2.0-alpha.1",
+        "version": BACKEND_VERSION,
+        "docs_url": "http://127.0.0.1:8787/docs",
+        "openapi_url": "http://127.0.0.1:8787/openapi.json",
         "reports_dir": str(REPORT_ROOT),
         "jobs": len(jobs),
         "time": time.time(),
+    }
+
+
+def openapi_docs_html() -> str:
+    return """<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LeakLane API Docs</title>
+    <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+    <style>
+      body { margin: 0; background: #f6f7f4; }
+      .topbar { display: none; }
+      .swagger-ui .info { margin: 28px 0; }
+    </style>
+  </head>
+  <body>
+    <div id="swagger-ui"></div>
+    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+    <script>
+      window.ui = SwaggerUIBundle({
+        url: '/openapi.json',
+        dom_id: '#swagger-ui',
+        deepLinking: true,
+        layout: 'BaseLayout',
+        presets: [SwaggerUIBundle.presets.apis]
+      });
+    </script>
+  </body>
+</html>"""
+
+
+def openapi_spec() -> dict:
+    error_schema = {
+        "type": "object",
+        "properties": {
+            "error": {"type": "string"},
+        },
+    }
+    return {
+        "openapi": "3.1.0",
+        "info": {
+            "title": "LeakLane Backend API",
+            "version": BACKEND_VERSION,
+            "description": "Local-first APIs for repository leak scanning, reports, repository maps, and LM Studio analysis.",
+        },
+        "servers": [{"url": "http://127.0.0.1:8787", "description": "Local backend"}],
+        "tags": [
+            {"name": "System"},
+            {"name": "Repositories"},
+            {"name": "Scans"},
+            {"name": "Reports"},
+            {"name": "Repository map"},
+            {"name": "AI"},
+        ],
+        "paths": {
+            "/api/health": {
+                "get": {
+                    "tags": ["System"],
+                    "summary": "Backend health and version",
+                    "responses": {"200": {"description": "Backend status"}},
+                }
+            },
+            "/api/prerequisites": {
+                "get": {
+                    "tags": ["System"],
+                    "summary": "Local dependency status",
+                    "responses": {"200": {"description": "Git, Gitleaks, GitHub CLI, and LM Studio status"}},
+                }
+            },
+            "/api/github/status": {
+                "get": {
+                    "tags": ["System"],
+                    "summary": "GitHub CLI authentication status",
+                    "responses": {"200": {"description": "GitHub CLI status"}},
+                }
+            },
+            "/api/search": {
+                "get": {
+                    "tags": ["Repositories"],
+                    "summary": "Search public repositories",
+                    "parameters": [
+                        {"name": "q", "in": "query", "required": True, "schema": {"type": "string"}},
+                        {
+                            "name": "provider",
+                            "in": "query",
+                            "required": False,
+                            "schema": {"type": "string", "enum": ["github", "bitbucket"], "default": "github"},
+                        },
+                    ],
+                    "responses": {
+                        "200": {"description": "Repository search results"},
+                        "502": {"description": "Provider search error", "content": {"application/json": {"schema": error_schema}}},
+                    },
+                }
+            },
+            "/api/scan": {
+                "post": {
+                    "tags": ["Scans"],
+                    "summary": "Start a Gitleaks scan job",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": ["urls"],
+                                    "properties": {
+                                        "urls": {"type": "array", "items": {"type": "string"}},
+                                        "mode": {"type": "string", "enum": ["git", "dir"], "default": "git"},
+                                        "timeout": {"type": "integer", "default": 0},
+                                        "maxTargetMegabytes": {"type": ["integer", "null"]},
+                                        "ai": {"type": "object"},
+                                    },
+                                }
+                            }
+                        },
+                    },
+                    "responses": {
+                        "202": {"description": "Scan queued"},
+                        "400": {"description": "Invalid scan request", "content": {"application/json": {"schema": error_schema}}},
+                    },
+                }
+            },
+            "/api/jobs": {
+                "get": {
+                    "tags": ["Scans"],
+                    "summary": "List scan jobs",
+                    "responses": {"200": {"description": "Job previews"}},
+                }
+            },
+            "/api/jobs/{jobId}": {
+                "get": {
+                    "tags": ["Scans"],
+                    "summary": "Get scan job detail",
+                    "parameters": [{"name": "jobId", "in": "path", "required": True, "schema": {"type": "string"}}],
+                    "responses": {
+                        "200": {"description": "Scan job detail"},
+                        "404": {"description": "Job not found", "content": {"application/json": {"schema": error_schema}}},
+                    },
+                }
+            },
+            "/api/dashboard": {
+                "get": {
+                    "tags": ["Reports"],
+                    "summary": "Risk dashboard summary",
+                    "responses": {"200": {"description": "Aggregated risk data"}},
+                }
+            },
+            "/api/diffs": {
+                "get": {
+                    "tags": ["Reports"],
+                    "summary": "Scan deltas across repository executions",
+                    "responses": {"200": {"description": "Repository diff summary"}},
+                }
+            },
+            "/api/reports/{jobId}/{reportName}": {
+                "get": {
+                    "tags": ["Reports"],
+                    "summary": "Download raw JSON report",
+                    "parameters": [
+                        {"name": "jobId", "in": "path", "required": True, "schema": {"type": "string"}},
+                        {"name": "reportName", "in": "path", "required": True, "schema": {"type": "string"}},
+                    ],
+                    "responses": {
+                        "200": {"description": "Report JSON file"},
+                        "404": {"description": "Report not found", "content": {"application/json": {"schema": error_schema}}},
+                    },
+                }
+            },
+            "/api/repository-map": {
+                "get": {
+                    "tags": ["Repository map"],
+                    "summary": "Generate or read cached repository structure map",
+                    "parameters": [
+                        {"name": "url", "in": "query", "required": True, "schema": {"type": "string"}},
+                        {"name": "refresh", "in": "query", "required": False, "schema": {"type": "boolean"}},
+                    ],
+                    "responses": {
+                        "200": {"description": "Repository branch, tag, PR, commit, and finding overlay"},
+                        "502": {"description": "Map generation error", "content": {"application/json": {"schema": error_schema}}},
+                    },
+                }
+            },
+            "/api/repository-map/ai-analysis": {
+                "post": {
+                    "tags": ["Repository map", "AI"],
+                    "summary": "Generate local LM Studio analysis for a repository map",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": ["url"],
+                                    "properties": {
+                                        "url": {"type": "string"},
+                                        "map": {"type": "object"},
+                                        "focus": {"type": "object"},
+                                        "ai": {"type": "object"},
+                                    },
+                                }
+                            }
+                        },
+                    },
+                    "responses": {
+                        "200": {"description": "AI map analysis"},
+                        "502": {"description": "LM Studio or map analysis error", "content": {"application/json": {"schema": error_schema}}},
+                    },
+                }
+            },
+            "/api/ai/status": {
+                "get": {
+                    "tags": ["AI"],
+                    "summary": "LM Studio status and available models",
+                    "responses": {"200": {"description": "LM Studio status"}},
+                }
+            },
+            "/api/jobs/{jobId}/ai-analysis": {
+                "post": {
+                    "tags": ["AI"],
+                    "summary": "Generate LM Studio report triage for a scan job",
+                    "parameters": [{"name": "jobId", "in": "path", "required": True, "schema": {"type": "string"}}],
+                    "responses": {
+                        "202": {"description": "AI analysis queued"},
+                        "404": {"description": "Job not found", "content": {"application/json": {"schema": error_schema}}},
+                    },
+                }
+            },
+            "/api/jobs/{jobId}/ai-analysis/content": {
+                "post": {
+                    "tags": ["AI"],
+                    "summary": "Save edited Markdown AI analysis content",
+                    "parameters": [{"name": "jobId", "in": "path", "required": True, "schema": {"type": "string"}}],
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": ["content"],
+                                    "properties": {"content": {"type": "string"}},
+                                }
+                            }
+                        },
+                    },
+                    "responses": {
+                        "200": {"description": "AI analysis content saved"},
+                        "404": {"description": "Job not found", "content": {"application/json": {"schema": error_schema}}},
+                    },
+                }
+            },
+            "/openapi.json": {
+                "get": {
+                    "tags": ["System"],
+                    "summary": "OpenAPI document",
+                    "responses": {"200": {"description": "OpenAPI specification"}},
+                }
+            },
+        },
     }
 
 
@@ -615,6 +894,9 @@ def prerequisites_status() -> dict:
         "lm_studio": lm_studio,
         "reports_dir": str(REPORT_ROOT),
         "backend_url": "http://127.0.0.1:8787",
+        "backend_version": BACKEND_VERSION,
+        "docs_url": "http://127.0.0.1:8787/docs",
+        "openapi_url": "http://127.0.0.1:8787/openapi.json",
     }
 
 

@@ -3,6 +3,7 @@ import type {
   DashboardMetric,
   DiffResponse,
   GithubStatus,
+  HealthStatus,
   JobPreview,
   PrerequisitesStatus,
   RepositoryMap,
@@ -40,6 +41,10 @@ export function getGithubStatus() {
 
 export function getAiStatus() {
   return request<AiStatus>('/api/ai/status');
+}
+
+export function getHealth() {
+  return request<HealthStatus>('/api/health');
 }
 
 export function getPrerequisites() {

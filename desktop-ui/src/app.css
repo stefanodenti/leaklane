@@ -286,11 +286,25 @@ nav a:hover {
   font-size: 0.76rem;
 }
 
+.sidebar-status a {
+  width: fit-content;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 42%, transparent);
+  color: var(--accent-ink);
+  font-size: 0.9rem;
+  font-weight: 820;
+}
+
+.sidebar-status a:hover {
+  color: var(--ink);
+}
+
+.sidebar-status a + span,
 .sidebar-status strong + span {
   margin-top: 6px;
 }
 
-.sidebar-status strong {
+.sidebar-status strong,
+.sidebar-status a {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -319,6 +333,7 @@ nav a:hover {
 .app-shell.sidebar-collapsed .nav-kicker,
 .app-shell.sidebar-collapsed nav a strong,
 .app-shell.sidebar-collapsed .sidebar-status span,
+.app-shell.sidebar-collapsed .sidebar-status a,
 .app-shell.sidebar-collapsed .sidebar-status strong {
   display: none;
 }
@@ -2106,6 +2121,7 @@ textarea {
   .app-shell.sidebar-collapsed .nav-kicker,
   .app-shell.sidebar-collapsed nav a strong,
   .app-shell.sidebar-collapsed .sidebar-status span,
+  .app-shell.sidebar-collapsed .sidebar-status a,
   .app-shell.sidebar-collapsed .sidebar-status strong {
     display: block;
   }

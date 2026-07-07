@@ -2,6 +2,7 @@
   import { browser } from '$app/environment';
   import { page } from '$app/state';
   import { onMount } from 'svelte';
+  import { getHealth } from '$lib/api';
   import packageJson from '../../package.json';
   import '../app.css';
 
@@ -15,14 +16,28 @@
     { href: '/settings', label: 'Settings', kicker: 'Locale', short: 'ST' }
   ];
   const backendUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8787';
-  const backendLabel = backendUrl.replace(/^https?:\/\//, '');
+  const backendDocsUrl = `${backendUrl}/docs`;
   const appVersion = packageJson.version;
 
   let sidebarCollapsed = false;
+  let backendVersion = 'n/d';
+  let apiDocsUrl = backendDocsUrl;
 
   onMount(() => {
     sidebarCollapsed = localStorage.getItem('leaklane-sidebar') === 'collapsed';
+    loadBackendHealth();
   });
+
+  async function loadBackendHealth() {
+    try {
+      const health = await getHealth();
+      backendVersion = health.version || 'n/d';
+      apiDocsUrl = health.docs_url || backendDocsUrl;
+    } catch {
+      backendVersion = 'offline';
+      apiDocsUrl = backendDocsUrl;
+    }
+  }
 
   function toggleSidebar() {
     sidebarCollapsed = !sidebarCollapsed;
@@ -81,10 +96,12 @@
 
     <div class="sidebar-status">
       <i aria-hidden="true"></i>
-      <span>Backend locale</span>
-      <strong>{backendLabel}</strong>
+      <span>Backend API</span>
+      <a href={apiDocsUrl} target="_blank" rel="noreferrer">OpenAPI / Swagger</a>
       <span>Versione app</span>
       <strong>{appVersion}</strong>
+      <span>Versione backend</span>
+      <strong>{backendVersion}</strong>
     </div>
   </aside>
 

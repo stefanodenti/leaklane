@@ -170,6 +170,17 @@ export type AiStatus = {
   error?: string | null;
 };
 
+export type HealthStatus = {
+  ok: boolean;
+  service: string;
+  version: string;
+  docs_url?: string;
+  openapi_url?: string;
+  reports_dir: string;
+  jobs: number;
+  time: number;
+};
+
 export type CommandCheck = {
   installed: boolean;
   required: boolean;
@@ -185,6 +196,9 @@ export type PrerequisitesStatus = {
   lm_studio: AiStatus;
   reports_dir: string;
   backend_url: string;
+  backend_version?: string;
+  docs_url?: string;
+  openapi_url?: string;
 };
 
 export type ScanPayload = {
