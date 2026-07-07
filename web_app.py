@@ -185,6 +185,9 @@ class Handler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/scan":
             self.handle_scan()
             return
+        if parsed.path == "/api/repository-map/ai-analysis":
+            self.handle_repository_map_ai_analysis()
+            return
         if parsed.path.startswith("/api/jobs/") and parsed.path.endswith("/ai-analysis/content"):
             self.handle_ai_content(parsed.path)
             return
@@ -419,6 +422,31 @@ class Handler(SimpleHTTPRequestHandler):
         save_ai_analysis(job)
         save_job(job)
         self.send_json({"job": job.to_dict()})
+
+    def handle_repository_map_ai_analysis(self) -> None:
+        try:
+            body = self.read_json()
+            raw_url = str(body.get("url") or "").strip()
+            if not raw_url:
+                self.send_json({"error": "Repository URL is required."}, HTTPStatus.BAD_REQUEST)
+                return
+            try:
+                url = normalize_repo_url(raw_url)
+            except SystemExit as exc:
+                self.send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+                return
+            map_payload = body.get("map") if isinstance(body.get("map"), dict) else None
+            focus_payload = body.get("focus") if isinstance(body.get("focus"), dict) else None
+            ai_config = normalize_ai_config(body.get("ai") or {})
+        except Exception as exc:
+            self.send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+        try:
+            analysis = generate_repository_map_ai_analysis(url, map_payload, ai_config, focus_payload)
+        except Exception as exc:
+            self.send_json({"error": str(exc)}, HTTPStatus.BAD_GATEWAY)
+            return
+        self.send_json({"analysis": analysis})
 
     def handle_report(self, path: str) -> None:
         parts = path.removeprefix("/api/reports/").strip("/").split("/")
@@ -1698,12 +1726,137 @@ def build_ai_prompt_payload(job: ScanJob) -> dict:
     }
 
 
+def generate_repository_map_ai_analysis(
+    url: str,
+    map_payload: dict | None,
+    ai_config: dict | None = None,
+    focus_payload: dict | None = None,
+) -> dict:
+    status = lm_studio_status()
+    requested_model = (ai_config or {}).get("model")
+    available_models = status.get("models") or []
+    model = requested_model if requested_model in available_models else status.get("selected_model")
+    if not status.get("available") or not model:
+        raise RuntimeError(status.get("error") or "LM Studio is not available.")
+
+    source_map = map_payload if map_payload else repository_map(url)
+    prompt_payload = build_repository_map_ai_prompt_payload(source_map, focus_payload)
+    content, used_model = call_lm_studio_with_fallback(
+        model,
+        available_models,
+        prompt_payload,
+        ai_config,
+        None,
+        prompt_kind="repository_map",
+    )
+    return {
+        "generated_at": time.time(),
+        "base_url": LM_STUDIO_BASE_URL,
+        "model": used_model,
+        "content": content,
+        "input": {
+            "repository": prompt_payload["repository"]["name"],
+            "branches": prompt_payload["summary"]["branches"],
+            "tags": prompt_payload["summary"]["tags"],
+            "pull_requests": prompt_payload["summary"]["pull_requests"],
+            "commits_sent": len(prompt_payload["commits"]),
+            "findings_sent": len(prompt_payload["findings"]),
+            "requested_model": requested_model or "automatic",
+            "focus": (prompt_payload.get("focus") or {}).get("title"),
+        },
+    }
+
+
+def build_repository_map_ai_prompt_payload(map_payload: dict, focus_payload: dict | None = None) -> dict:
+    branches = sorted(
+        map_payload.get("branches", []),
+        key=lambda item: (not item.get("is_default"), -(int(item.get("updated_at") or 0))),
+    )
+    commits = map_payload.get("commits", [])
+    findings = map_payload.get("findings", [])
+    pull_requests = map_payload.get("pull_requests", [])
+    tags = map_payload.get("tags", [])
+    stale_cutoff = time.time() - (90 * 24 * 60 * 60)
+
+    return {
+        "repository": map_payload.get("repository", {}),
+        "summary": map_payload.get("summary", {}),
+        "default_branch": (map_payload.get("repository") or {}).get("default_branch"),
+        "focus": focus_payload or None,
+        "branches": [
+            {
+                "name": branch.get("name"),
+                "remote_name": branch.get("remote_name"),
+                "is_default": branch.get("is_default"),
+                "updated_at": branch.get("updated_at"),
+                "stale": bool(branch.get("updated_at") and int(branch.get("updated_at")) < stale_cutoff),
+                "head": branch.get("short"),
+                "subject": truncate(branch.get("subject") or "", 140),
+                "findings": branch.get("findings", 0),
+            }
+            for branch in branches[:16]
+        ],
+        "pull_requests": [
+            {
+                "number": pr.get("number"),
+                "title": truncate(pr.get("title") or "", 160),
+                "state": pr.get("state"),
+                "is_draft": pr.get("is_draft"),
+                "author": pr.get("author"),
+                "head": pr.get("head"),
+                "base": pr.get("base"),
+                "updated_at": pr.get("updated_at"),
+            }
+            for pr in pull_requests[:12]
+        ],
+        "tags": [
+            {
+                "name": tag.get("name"),
+                "created_at": tag.get("created_at"),
+                "commit": tag.get("short"),
+                "subject": truncate(tag.get("subject") or "", 120),
+            }
+            for tag in tags[:10]
+        ],
+        "commits": [
+            {
+                "short": commit.get("short"),
+                "parents": len(commit.get("parents") or []),
+                "timestamp": commit.get("timestamp"),
+                "author": commit.get("author"),
+                "subject": truncate(commit.get("subject") or "", 150),
+                "findings": commit.get("findings", 0),
+            }
+            for commit in commits[:30]
+        ],
+        "findings": [
+            {
+                "rule": finding.get("rule"),
+                "file": finding.get("file"),
+                "line": finding.get("line"),
+                "commit": str(finding.get("commit") or "")[:12],
+                "severity": finding.get("severity"),
+                "description": truncate(finding.get("description") or "", 120),
+            }
+            for finding in findings[:AI_ANALYSIS_FINDING_LIMIT]
+        ],
+        "truncated": {
+            "branches": len(branches) > 16,
+            "pull_requests": len(pull_requests) > 12,
+            "tags": len(tags) > 10,
+            "commits": len(commits) > 30,
+            "findings": len(findings) > AI_ANALYSIS_FINDING_LIMIT,
+        },
+    }
+
+
 def call_lm_studio_with_fallback(
     model: str,
     available_models: list[str],
     prompt_payload: dict,
     ai_config: dict | None,
-    job: ScanJob,
+    job: ScanJob | None,
+    prompt_kind: str = "scan",
 ) -> tuple[str, str]:
     attempted: set[str] = set()
     candidates = [model, *fallback_chat_models(available_models, exclude={model})]
@@ -1714,15 +1867,17 @@ def call_lm_studio_with_fallback(
             continue
         attempted.add(candidate)
         try:
-            content = call_lm_studio(candidate, prompt_payload, ai_config)
+            content = call_lm_studio(candidate, prompt_payload, ai_config, prompt_kind=prompt_kind)
             if candidate != model:
-                job.log(f"AI model fallback used: {candidate}")
-                save_job(job)
+                if job:
+                    job.log(f"AI model fallback used: {candidate}")
+                    save_job(job)
             return content, candidate
         except EmptyModelResponse as exc:
             last_error = exc
-            job.log(f"{candidate}: empty AI response, trying fallback model")
-            save_job(job)
+            if job:
+                job.log(f"{candidate}: empty AI response, trying fallback model")
+                save_job(job)
             continue
 
     if last_error:
@@ -1752,21 +1907,46 @@ def fallback_chat_models(models: list[str], exclude: set[str] | None = None) -> 
     return ordered
 
 
-def call_lm_studio(model: str, prompt_payload: dict, ai_config: dict | None = None) -> str:
-    default_system_prompt = (
-        "Sei un senior application security engineer. Analizza finding Gitleaks gia' redatti. "
-        "Non inventare secret e non affermare che una credenziale sia valida se non puoi verificarlo. "
-        "Scrivi in italiano, con tono operativo e conciso. Devi sempre produrre una risposta finale in Markdown."
-    )
+def call_lm_studio(
+    model: str,
+    prompt_payload: dict,
+    ai_config: dict | None = None,
+    prompt_kind: str = "scan",
+) -> str:
+    if prompt_kind == "repository_map":
+        default_system_prompt = (
+            "Sei un senior application security engineer con esperienza in repository governance. "
+            "Analizza una mappa Git gia' estratta: branch, tag, commit, PR e finding Gitleaks redatti. "
+            "Non inventare secret, non affermare che credenziali siano valide e non chiedere accesso al codice. "
+            "Scrivi in italiano, con tono operativo e conciso. Devi sempre produrre una risposta finale in Markdown."
+        )
+        default_user_prompt = (
+            "Genera una analisi intelligente della struttura del repository.\n"
+            "Restituisci Markdown con queste sezioni: Sintesi operativa, Segnali sulla struttura Git, "
+            "Rischio security overlay, Branch e PR da rivedere, Azioni consigliate.\n"
+            "Evidenzia stale branch, PR aperte/draft, assenza o presenza di tag, commit con finding e possibili colli di bottiglia. "
+            "Se il JSON contiene un campo focus, apri con una lettura mirata di quell'elemento prima della visione generale. "
+            "Se i dati sono insufficienti, dillo chiaramente e suggerisci cosa raccogliere.\n"
+            "Cita nomi di branch, PR, tag, rule, file e commit breve quando disponibili."
+        )
+    else:
+        default_system_prompt = (
+            "Sei un senior application security engineer. Analizza finding Gitleaks gia' redatti. "
+            "Non inventare secret e non affermare che una credenziale sia valida se non puoi verificarlo. "
+            "Scrivi in italiano, con tono operativo e conciso. Devi sempre produrre una risposta finale in Markdown."
+        )
+        default_user_prompt = (
+            "Genera una analisi breve di triage per questo report Gitleaks.\n"
+            "Restituisci Markdown con queste sezioni: Sintesi, Priorita', Possibili falsi positivi, "
+            "Azioni consigliate, Note operative.\n"
+            "Per ogni priorita' cita rule, file e riga quando disponibili."
+        )
     system_prompt = (ai_config or {}).get("system_prompt") or default_system_prompt
     additional = (ai_config or {}).get("additional_instructions") or ""
     user_prompt = (
-        "Genera una analisi breve di triage per questo report Gitleaks.\n"
-        "Restituisci Markdown con queste sezioni: Sintesi, Priorita', Possibili falsi positivi, "
-        "Azioni consigliate, Note operative.\n"
-        "Per ogni priorita' cita rule, file e riga quando disponibili.\n\n"
+        f"{default_user_prompt}\n\n"
         f"Specifiche addizionali utente:\n{additional or 'Nessuna'}\n\n"
-        f"Dati report JSON:\n{json.dumps(prompt_payload, ensure_ascii=True, separators=(',', ':'))}"
+        f"Dati JSON:\n{json.dumps(prompt_payload, ensure_ascii=True, separators=(',', ':'))}"
     )
     request_body = {
         "model": model,

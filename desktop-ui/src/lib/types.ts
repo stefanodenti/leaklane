@@ -309,3 +309,20 @@ export type RepositoryMap = {
   };
   updated_at: number;
 };
+
+export type RepositoryMapAiAnalysis = {
+  generated_at: number;
+  base_url: string;
+  model: string;
+  content: string;
+  input: {
+    repository: string;
+    branches: number;
+    tags: number;
+    pull_requests: number;
+    commits_sent: number;
+    findings_sent: number;
+    requested_model: string;
+    focus?: string | null;
+  };
+};

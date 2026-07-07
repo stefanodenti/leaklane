@@ -1508,6 +1508,13 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+.selection-drawer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .close-drawer {
   min-height: 34px;
 }
@@ -1668,6 +1675,64 @@ textarea {
   width: 15px;
   height: 15px;
   padding: 0;
+}
+
+.ai-map-action {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+  color: var(--accent-ink);
+  font-weight: 820;
+}
+
+.map-ai-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.map-ai-loading,
+.map-ai-empty {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 7%, transparent), transparent 44%),
+    var(--surface-2);
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.map-ai-empty {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.map-ai-empty p,
+.map-ai-loading p {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.map-ai-markdown {
+  max-height: 520px;
+  overflow: auto;
+}
+
+.map-ai-markdown.compact {
+  max-height: 280px;
+  padding: 16px;
+}
+
+.drawer-ai-panel {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.drawer-ai-panel p {
+  color: var(--muted);
+  line-height: 1.45;
 }
 
 .segmented-control {
@@ -1965,6 +2030,10 @@ textarea {
     padding: 12px;
   }
 
+  .map-ai-empty {
+    grid-template-columns: 1fr;
+  }
+
   nav,
   .metric-grid,
   .dashboard-grid,
@@ -1998,6 +2067,10 @@ textarea {
 
   .selection-drawer-head {
     grid-template-columns: 1fr;
+  }
+
+  .selection-drawer-actions {
+    justify-content: flex-start;
   }
 
   .job-list {

@@ -4,7 +4,7 @@
 
 ### Added
 
-- Nothing yet.
+- Local LM Studio analysis for Repository Intelligence maps, including full-map summaries and selected-node context readings.
 
 ## v0.2.0-alpha.1 - 2026-07-07
 

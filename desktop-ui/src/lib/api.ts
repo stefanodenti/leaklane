@@ -6,6 +6,7 @@ import type {
   JobPreview,
   PrerequisitesStatus,
   RepositoryMap,
+  RepositoryMapAiAnalysis,
   ScanJobDetail,
   ScanPayload,
   SearchResult
@@ -58,6 +59,21 @@ export function getRepositoryMap(url: string, refresh = false) {
   const query = new URLSearchParams({ url });
   if (refresh) query.set('refresh', '1');
   return request<RepositoryMap>(`/api/repository-map?${query.toString()}`);
+}
+
+export async function generateRepositoryMapAiAnalysis(
+  url: string,
+  map: RepositoryMap,
+  focus?: Record<string, unknown>
+) {
+  const payload = await request<{ analysis: RepositoryMapAiAnalysis }>('/api/repository-map/ai-analysis', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ url, map, focus, ai: {} })
+  });
+  return payload.analysis;
 }
 
 export async function getJobs() {

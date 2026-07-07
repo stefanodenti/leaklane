@@ -1,10 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getJobs, getRepositoryMap } from '$lib/api';
+  import { generateRepositoryMapAiAnalysis, getJobs, getRepositoryMap } from '$lib/api';
   import { formatDate, formatNumber } from '$lib/format';
+  import { renderMarkdown } from '$lib/markdown';
   import type {
     JobPreview,
     RepositoryMap,
+    RepositoryMapAiAnalysis,
     RepositoryMapBranch,
     RepositoryMapCommit,
     RepositoryMapFinding,
@@ -35,6 +37,13 @@
   let loadingMap = false;
   let error = '';
   let mapError = '';
+  let mapAiAnalysis: RepositoryMapAiAnalysis | null = null;
+  let mapAiLoading = false;
+  let mapAiError = '';
+  let selectedAiAnalysis: RepositoryMapAiAnalysis | null = null;
+  let selectedAiLoading = false;
+  let selectedAiError = '';
+  let selectionKey = '';
   let showBranches = true;
   let showTags = true;
   let showPullRequests = true;
@@ -47,6 +56,15 @@
 
   const graphLanes = [0, 1, 2, 3, 4];
   const lanePalette = ['#2f8ab7', '#7a70c8', '#4fa46c', '#c47a3f', '#c45c73'];
+
+  $: {
+    const nextSelectionKey = selectedIdentity(selected);
+    if (nextSelectionKey !== selectionKey) {
+      selectionKey = nextSelectionKey;
+      selectedAiAnalysis = null;
+      selectedAiError = '';
+    }
+  }
 
   async function loadJobs() {
     loadingJobs = true;
@@ -66,6 +84,8 @@
     if (!selectedUrl || loadingMap) return;
     loadingMap = true;
     mapError = '';
+    mapAiError = '';
+    mapAiAnalysis = null;
     selected = null;
     try {
       repoMap = await getRepositoryMap(selectedUrl, refresh);
@@ -110,7 +130,35 @@
     repoMap = null;
     selected = null;
     laneMap = new Map();
+    mapAiAnalysis = null;
+    mapAiError = '';
     mapError = '';
+  }
+
+  async function runMapAiAnalysis() {
+    if (!selectedUrl || !repoMap || mapAiLoading) return;
+    mapAiLoading = true;
+    mapAiError = '';
+    try {
+      mapAiAnalysis = await generateRepositoryMapAiAnalysis(selectedUrl, repoMap);
+    } catch (err) {
+      mapAiError = err instanceof Error ? err.message : 'Errore generazione analisi AI mappa';
+    } finally {
+      mapAiLoading = false;
+    }
+  }
+
+  async function runSelectedAiAnalysis() {
+    if (!selectedUrl || !repoMap || !selected || selectedAiLoading) return;
+    selectedAiLoading = true;
+    selectedAiError = '';
+    try {
+      selectedAiAnalysis = await generateRepositoryMapAiAnalysis(selectedUrl, repoMap, selectionFocus(selected, repoMap));
+    } catch (err) {
+      selectedAiError = err instanceof Error ? err.message : 'Errore analisi AI elemento';
+    } finally {
+      selectedAiLoading = false;
+    }
   }
 
   function graphWidth(map: RepositoryMap) {
@@ -277,6 +325,60 @@
     if (selection.type === 'finding') return selection.item.rule || 'unknown-rule';
     if (selection.type === 'tag') return selection.item.name;
     return `PR #${selection.item.number}`;
+  }
+
+  function selectedIdentity(selection: Selection) {
+    if (!selection) return '';
+    if (selection.type === 'commit') return `commit:${selection.item.hash}`;
+    if (selection.type === 'branch') return `branch:${selection.item.name}`;
+    if (selection.type === 'finding') return `finding:${selection.item.fingerprint || selection.item.rule || selection.item.file}`;
+    if (selection.type === 'tag') return `tag:${selection.item.name}`;
+    return `pr:${selection.item.number}`;
+  }
+
+  function selectionFocus(selection: Selection, map: RepositoryMap): Record<string, unknown> | undefined {
+    if (!selection) return undefined;
+    const base = {
+      type: selectedKind(selection),
+      title: selectedTitle(selection)
+    };
+    if (selection.type === 'commit') {
+      return {
+        ...base,
+        item: selection.item,
+        related_branches: branchesForCommit(selection.item, map).map((branch) => branch.name),
+        related_tags: tagsForCommit(selection.item, map).map((tag) => tag.name),
+        related_findings: commitFindings(selection.item, map).slice(0, 8)
+      };
+    }
+    if (selection.type === 'branch') {
+      return {
+        ...base,
+        item: selection.item,
+        related_pull_requests: pullRequestsForBranch(selection.item, map).slice(0, 8),
+        head_commit: commitByHash(selection.item.commit, map)
+      };
+    }
+    if (selection.type === 'finding') {
+      return {
+        ...base,
+        item: selection.item,
+        related_commit: selection.item.commit ? commitByHash(selection.item.commit, map) : null
+      };
+    }
+    if (selection.type === 'tag') {
+      return {
+        ...base,
+        item: selection.item,
+        related_commit: commitByHash(selection.item.commit, map)
+      };
+    }
+    return {
+      ...base,
+      item: selection.item,
+      head_branch: selection.item.head ? map.branches.find((branch) => branch.name === selection.item.head) : null,
+      base_branch: selection.item.base ? map.branches.find((branch) => branch.name === selection.item.base) : null
+    };
   }
 
   function selectedKind(selection: Selection) {
@@ -471,6 +573,9 @@
               <label><input type="checkbox" bind:checked={showPullRequests} /> PR</label>
               <label><input type="checkbox" bind:checked={showFindings} /> Finding</label>
               <button class="ghost" type="button" disabled={loadingMap} on:click={() => loadMap(true)}>Aggiorna clone</button>
+              <button class="ghost ai-map-action" type="button" disabled={mapAiLoading} on:click={runMapAiAnalysis}>
+                {mapAiLoading ? 'AI in corso' : mapAiAnalysis ? 'Rigenera analisi AI' : 'Analizza con AI'}
+              </button>
             </div>
 
             {#if showBranches}
@@ -661,6 +766,46 @@
 
         </section>
 
+        <section class="panel map-ai-panel">
+          <div class="section-title">
+            <div>
+              <p class="eyebrow">LM Studio</p>
+              <h3>Analisi AI della mappa</h3>
+            </div>
+            {#if mapAiAnalysis}
+              <span>{mapAiAnalysis.model} | {formatDate(mapAiAnalysis.generated_at)}</span>
+            {:else}
+              <span>Locale</span>
+            {/if}
+          </div>
+
+          {#if mapAiLoading}
+            <div class="map-ai-loading">
+              <div class="skeleton-line wide"></div>
+              <p>LM Studio sta leggendo branch, tag, PR, commit e finding redatti.</p>
+            </div>
+          {:else if mapAiError}
+            <div class="inline-error">{mapAiError}</div>
+          {:else if mapAiAnalysis?.content}
+            <div class="ai-meta">
+              <span>{mapAiAnalysis.input.commits_sent} commit inviati</span>
+              <span>{mapAiAnalysis.input.findings_sent} finding inviati</span>
+              <span>{mapAiAnalysis.input.branches} branch</span>
+            </div>
+            <article class="markdown-body map-ai-markdown">
+              {@html renderMarkdown(mapAiAnalysis.content)}
+            </article>
+          {:else}
+            <div class="map-ai-empty">
+              <p>
+                Genera una lettura locale della struttura: branch stale, flusso PR, tag/release,
+                commit con finding e priorita' operative.
+              </p>
+              <button type="button" on:click={runMapAiAnalysis}>Analizza mappa con LM Studio</button>
+            </div>
+          {/if}
+        </section>
+
         <section class="repo-secondary-grid">
           <div class="panel">
             <div class="section-title">
@@ -752,9 +897,14 @@
                 <p class="eyebrow">{selectedKind(selected)}</p>
                 <h3>{selectedTitle(selected)}</h3>
               </div>
-              <button class="ghost close-drawer" type="button" aria-label="Chiudi dettaglio selezione" on:click={() => (selected = null)}>
-                Chiudi
-              </button>
+              <div class="selection-drawer-actions">
+                <button class="ghost ai-map-action" type="button" disabled={selectedAiLoading} on:click={runSelectedAiAnalysis}>
+                  {selectedAiLoading ? 'AI in corso' : selectedAiAnalysis ? 'Rigenera AI' : 'Analizza nodo'}
+                </button>
+                <button class="ghost close-drawer" type="button" aria-label="Chiudi dettaglio selezione" on:click={() => (selected = null)}>
+                  Chiudi
+                </button>
+              </div>
             </div>
 
             {#if selected.type === 'commit'}
@@ -907,6 +1057,26 @@
                   {#if selected.item.merged_at}<span>Merged {isoDate(selected.item.merged_at)}</span>{/if}
                   {#if selected.item.url}<a class="button-link" href={selected.item.url} target="_blank" rel="noreferrer">Apri PR</a>{/if}
                 </div>
+              </div>
+            {/if}
+
+            {#if selectedAiLoading}
+              <div class="drawer-ai-panel">
+                <div class="skeleton-line wide"></div>
+                <p>LM Studio sta analizzando il nodo selezionato nel contesto della mappa.</p>
+              </div>
+            {:else if selectedAiError}
+              <div class="inline-error">{selectedAiError}</div>
+            {:else if selectedAiAnalysis?.content}
+              <div class="drawer-ai-panel">
+                <div class="ai-meta">
+                  <span>{selectedAiAnalysis.model}</span>
+                  <span>{formatDate(selectedAiAnalysis.generated_at)}</span>
+                  {#if selectedAiAnalysis.input.focus}<span>{selectedAiAnalysis.input.focus}</span>{/if}
+                </div>
+                <article class="markdown-body map-ai-markdown compact">
+                  {@html renderMarkdown(selectedAiAnalysis.content)}
+                </article>
               </div>
             {/if}
           </aside>
