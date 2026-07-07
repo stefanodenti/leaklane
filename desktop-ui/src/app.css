@@ -1150,6 +1150,35 @@ textarea {
   top: 28px;
 }
 
+.map-repo-tools {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.map-repo-tools label {
+  display: grid;
+  gap: 5px;
+}
+
+.map-repo-tools span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 820;
+  text-transform: uppercase;
+}
+
+.map-repo-tools input,
+.map-repo-tools select {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  padding: 0 10px;
+}
+
 .repo-map-list,
 .branch-stack,
 .pr-stack {
@@ -1172,10 +1201,41 @@ textarea {
 
 .repo-map-item.active,
 .repo-map-item:hover,
+.repo-map-item.risky,
 .branch-row:hover,
 .pr-row:hover {
   border-color: color-mix(in srgb, var(--accent) 44%, var(--line));
   background: color-mix(in srgb, var(--surface) 76%, var(--accent) 10%);
+}
+
+.repo-map-item.risky:not(.active):not(:hover) {
+  border-color: color-mix(in srgb, var(--warn-ink) 28%, var(--line));
+  background: color-mix(in srgb, var(--surface-2) 84%, var(--warn-ink) 8%);
+}
+
+.repo-map-item-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.repo-map-item-head em {
+  min-width: 26px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 850;
+  padding: 2px 7px;
+  text-align: center;
+}
+
+.repo-map-item.risky .repo-map-item-head em {
+  border-color: color-mix(in srgb, var(--warn-ink) 36%, var(--line));
+  color: var(--warn-ink);
 }
 
 .repo-map-item strong,
@@ -1215,6 +1275,33 @@ textarea {
 
 .graph-panel {
   min-width: 0;
+}
+
+.map-coverage-strip {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+}
+
+.map-coverage-strip span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 720;
+}
+
+.map-coverage-strip.partial {
+  border-color: color-mix(in srgb, var(--warn-ink) 34%, var(--line));
+  background: color-mix(in srgb, var(--surface-2) 88%, var(--warn-ink) 8%);
+}
+
+.map-coverage-strip.partial span:first-child {
+  color: var(--warn-ink);
 }
 
 .graph-scroll {

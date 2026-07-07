@@ -302,6 +302,18 @@ export type RepositoryMap = {
   pull_requests: RepositoryPullRequest[];
   commits: RepositoryMapCommit[];
   findings: RepositoryMapFinding[];
+  limits?: {
+    commits: number;
+    branches: number;
+    tags: number;
+    pull_requests: number;
+  };
+  truncated?: {
+    commits: boolean;
+    branches: boolean;
+    tags: boolean;
+    pull_requests: boolean;
+  };
   cache?: {
     hit: boolean;
     generated_at: number;

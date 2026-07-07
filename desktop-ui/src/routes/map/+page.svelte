@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { browser } from '$app/environment';
+  import { onMount, tick } from 'svelte';
   import { generateRepositoryMapAiAnalysis, getJobs, getRepositoryMap } from '$lib/api';
   import { formatDate, formatNumber } from '$lib/format';
   import { renderMarkdown } from '$lib/markdown';
@@ -18,7 +19,12 @@
     name: string;
     url: string;
     jobs: number;
+    latestFindings: number;
+    latestStatus: string;
+    lastScanAt: number;
   };
+
+  type MapSort = 'recent' | 'risk' | 'name';
 
   type Selection =
     | { type: 'commit'; item: RepositoryMapCommit }
@@ -30,7 +36,10 @@
 
   let jobs: JobPreview[] = [];
   let repositories: RepoOption[] = [];
+  let filteredRepositories: RepoOption[] = [];
   let selectedUrl = '';
+  let repoSearch = '';
+  let repoSort: MapSort = 'recent';
   let repoMap: RepositoryMap | null = null;
   let selected: Selection = null;
   let loadingJobs = true;
@@ -53,9 +62,26 @@
   let dragStartX = 0;
   let dragScrollLeft = 0;
   let laneMap = new Map<string, number>();
+  let graphViewport: HTMLDivElement | null = null;
+  let mapStateReady = false;
 
+  const MAP_STATE_KEY = 'leaklane-map-state';
   const graphLanes = [0, 1, 2, 3, 4];
   const lanePalette = ['#2f8ab7', '#7a70c8', '#4fa46c', '#c47a3f', '#c45c73'];
+
+  $: filteredRepositories = repositoryDisplayOptions(repositories, repoSearch, repoSort);
+
+  $: if (browser && mapStateReady) {
+    selectedUrl;
+    repoSearch;
+    repoSort;
+    showBranches;
+    showTags;
+    showPullRequests;
+    showFindings;
+    zoom;
+    saveMapState();
+  }
 
   $: {
     const nextSelectionKey = selectedIdentity(selected);
@@ -72,7 +98,9 @@
     try {
       jobs = await getJobs();
       repositories = repositoryOptions(jobs);
-      selectedUrl = repositories[0]?.url || '';
+      if (!selectedUrl || !repositories.some((repository) => repository.url === selectedUrl)) {
+        selectedUrl = repositories[0]?.url || '';
+      }
     } catch (err) {
       error = err instanceof Error ? err.message : 'Errore caricamento repository';
     } finally {
@@ -91,6 +119,8 @@
       repoMap = await getRepositoryMap(selectedUrl, refresh);
       laneMap = buildLaneMap(repoMap);
       selected = repoMap.commits[0] ? { type: 'commit', item: repoMap.commits[0] } : null;
+      await tick();
+      fitGraphToViewport();
     } catch (err) {
       repoMap = null;
       laneMap = new Map();
@@ -103,16 +133,57 @@
   function repositoryOptions(items: JobPreview[]) {
     const index = new Map<string, RepoOption>();
     for (const job of items) {
-      for (const url of job.urls || []) {
+      for (const [urlIndex, url] of (job.urls || []).entries()) {
         const previous = index.get(url);
+        const result = resultForUrl(job, url, urlIndex);
+        const findings = Number(result?.findings || 0);
+        const scanAt = Number(job.finished_at || job.started_at || 0);
         if (previous) {
           previous.jobs += 1;
+          if (scanAt >= previous.lastScanAt) {
+            previous.latestFindings = findings;
+            previous.latestStatus = result?.status || job.status;
+            previous.lastScanAt = scanAt;
+          }
         } else {
-          index.set(url, { name: repoNameFromUrl(url), url, jobs: 1 });
+          index.set(url, {
+            name: repoNameFromUrl(url),
+            url,
+            jobs: 1,
+            latestFindings: findings,
+            latestStatus: result?.status || job.status,
+            lastScanAt: scanAt
+          });
         }
       }
     }
-    return Array.from(index.values()).sort((left, right) => left.name.localeCompare(right.name));
+    return Array.from(index.values());
+  }
+
+  function resultForUrl(job: JobPreview, url: string, index: number) {
+    return (
+      job.results?.[index] ||
+      job.results?.find((result) => result.name === repoNameFromUrl(url) || repoNameFromUrl(url).endsWith(result.name)) ||
+      null
+    );
+  }
+
+  function repositoryDisplayOptions(items: RepoOption[], query: string, sort: MapSort) {
+    const needle = query.trim().toLowerCase();
+    const filtered = needle
+      ? items.filter((repository) => `${repository.name} ${repository.url}`.toLowerCase().includes(needle))
+      : [...items];
+    return filtered.sort((left, right) => {
+      if (sort === 'risk') {
+        return (
+          right.latestFindings - left.latestFindings ||
+          right.lastScanAt - left.lastScanAt ||
+          left.name.localeCompare(right.name)
+        );
+      }
+      if (sort === 'name') return left.name.localeCompare(right.name);
+      return right.lastScanAt - left.lastScanAt || left.name.localeCompare(right.name);
+    });
   }
 
   function repoNameFromUrl(url: string) {
@@ -133,6 +204,41 @@
     mapAiAnalysis = null;
     mapAiError = '';
     mapError = '';
+  }
+
+  function restoreMapState() {
+    if (!browser) return;
+    try {
+      const raw = localStorage.getItem(MAP_STATE_KEY);
+      if (!raw) return;
+      const state = JSON.parse(raw);
+      selectedUrl = typeof state.selectedUrl === 'string' ? state.selectedUrl : '';
+      repoSearch = typeof state.repoSearch === 'string' ? state.repoSearch : '';
+      repoSort = state.repoSort === 'risk' || state.repoSort === 'name' ? state.repoSort : 'recent';
+      showBranches = state.showBranches !== false;
+      showTags = state.showTags !== false;
+      showPullRequests = state.showPullRequests !== false;
+      showFindings = state.showFindings !== false;
+      zoom = typeof state.zoom === 'number' ? Math.min(1.8, Math.max(0.7, state.zoom)) : 1;
+    } catch {
+      selectedUrl = '';
+    }
+  }
+
+  function saveMapState() {
+    localStorage.setItem(
+      MAP_STATE_KEY,
+      JSON.stringify({
+        selectedUrl,
+        repoSearch,
+        repoSort,
+        showBranches,
+        showTags,
+        showPullRequests,
+        showFindings,
+        zoom
+      })
+    );
   }
 
   async function runMapAiAnalysis() {
@@ -430,6 +536,28 @@
     zoom = 1;
   }
 
+  function fitGraphToViewport() {
+    if (!repoMap || !graphViewport) return;
+    const available = Math.max(320, graphViewport.clientWidth - 28);
+    const nextZoom = available / graphWidth(repoMap);
+    zoom = Math.min(1.8, Math.max(0.7, Number(nextZoom.toFixed(2))));
+  }
+
+  function mapCoverageLabel(map: RepositoryMap) {
+    const partial = map.truncated || {
+      commits: false,
+      branches: false,
+      tags: false,
+      pull_requests: false
+    };
+    const parts = [];
+    if (partial.commits) parts.push(`${formatNumber(map.limits?.commits || map.commits.length)} commit`);
+    if (partial.branches) parts.push(`${formatNumber(map.limits?.branches || map.branches.length)} branch`);
+    if (partial.tags) parts.push(`${formatNumber(map.limits?.tags || map.tags.length)} tag`);
+    if (partial.pull_requests) parts.push(`${formatNumber(map.limits?.pull_requests || map.pull_requests.length)} PR`);
+    return parts.length ? `Vista parziale: ultimi ${parts.join(', ')}` : 'Vista completa entro i limiti letti';
+  }
+
   function startPan(event: PointerEvent) {
     const target = event.currentTarget as HTMLElement;
     isDragging = true;
@@ -483,7 +611,11 @@
     return 'status-chip';
   }
 
-  onMount(loadJobs);
+  onMount(() => {
+    restoreMapState();
+    mapStateReady = true;
+    loadJobs();
+  });
 </script>
 
 <section class="page-head">
@@ -510,18 +642,39 @@
           <p class="eyebrow">Repository</p>
           <h3>Pitlane analizzata</h3>
         </div>
-        <span>{formatNumber(repositories.length)} repo</span>
+        <span>{formatNumber(filteredRepositories.length)} / {formatNumber(repositories.length)} repo</span>
+      </div>
+      <div class="map-repo-tools">
+        <label>
+          <span>Cerca repo</span>
+          <input type="search" bind:value={repoSearch} placeholder="owner/name o URL" />
+        </label>
+        <label>
+          <span>Ordina</span>
+          <select bind:value={repoSort}>
+            <option value="recent">Ultima scansione</option>
+            <option value="risk">Finding</option>
+            <option value="name">Nome</option>
+          </select>
+        </label>
       </div>
       <div class="repo-map-list">
-        {#each repositories as repository}
+        {#if filteredRepositories.length === 0}
+          <div class="empty compact">Nessun repository corrisponde al filtro.</div>
+        {/if}
+        {#each filteredRepositories as repository}
           <button
             class:active={repository.url === selectedUrl}
+            class:risky={repository.latestFindings > 0}
             class="repo-map-item"
             type="button"
             on:click={() => selectUrl(repository.url)}
           >
-            <strong>{repository.name}</strong>
-            <span>{repository.jobs} scan | {repository.url}</span>
+            <span class="repo-map-item-head">
+              <strong>{repository.name}</strong>
+              <em>{formatNumber(repository.latestFindings)}</em>
+            </span>
+            <span>{repository.jobs} scan | {repository.lastScanAt ? formatDate(repository.lastScanAt) : 'mai'} | {repository.url}</span>
           </button>
         {/each}
       </div>
@@ -561,6 +714,10 @@
                 {repoMap.cache?.hit ? ' | cache' : ''}
               </span>
             </div>
+            <div class="map-coverage-strip" class:partial={repoMap.truncated && Object.values(repoMap.truncated).some(Boolean)}>
+              <span>{mapCoverageLabel(repoMap)}</span>
+              <span>Generata {formatDate(repoMap.updated_at)}</span>
+            </div>
 
             <div class="map-toolbar" aria-label="Controlli mappa repository">
               <div class="segmented-control">
@@ -568,6 +725,7 @@
                 <button type="button" on:click={resetZoom}>{Math.round(zoom * 100)}%</button>
                 <button type="button" on:click={zoomIn}>+</button>
               </div>
+              <button class="ghost" type="button" on:click={fitGraphToViewport}>Adatta</button>
               <label><input type="checkbox" bind:checked={showBranches} /> Branch</label>
               <label><input type="checkbox" bind:checked={showTags} /> Tag</label>
               <label><input type="checkbox" bind:checked={showPullRequests} /> PR</label>
@@ -596,6 +754,7 @@
             {/if}
 
             <div
+              bind:this={graphViewport}
               class:dragging={isDragging}
               class="graph-scroll"
               aria-label="Grafo commit repository"

@@ -44,6 +44,10 @@ jobs_lock = threading.Lock()
 jobs: dict[str, "ScanJob"] = {}
 repository_map_cache: dict[str, tuple[float, dict]] = {}
 REPOSITORY_MAP_CACHE_SECONDS = 600
+REPOSITORY_MAP_COMMIT_LIMIT = 120
+REPOSITORY_MAP_BRANCH_LIMIT = 40
+REPOSITORY_MAP_TAG_LIMIT = 30
+REPOSITORY_MAP_PR_LIMIT = 30
 
 
 class EmptyModelResponse(RuntimeError):
@@ -991,6 +995,18 @@ def repository_map(url: str, refresh: bool = False) -> dict:
         "pull_requests": prs,
         "commits": commits,
         "findings": repository_map_findings(latest["items"]),
+        "limits": {
+            "commits": REPOSITORY_MAP_COMMIT_LIMIT,
+            "branches": REPOSITORY_MAP_BRANCH_LIMIT,
+            "tags": REPOSITORY_MAP_TAG_LIMIT,
+            "pull_requests": REPOSITORY_MAP_PR_LIMIT,
+        },
+        "truncated": {
+            "commits": len(commits) >= REPOSITORY_MAP_COMMIT_LIMIT,
+            "branches": len(branches) >= REPOSITORY_MAP_BRANCH_LIMIT,
+            "tags": len(tags) >= REPOSITORY_MAP_TAG_LIMIT,
+            "pull_requests": len(prs) >= REPOSITORY_MAP_PR_LIMIT,
+        },
         "cache": {
             "hit": False,
             "generated_at": generated_at,
@@ -1043,7 +1059,7 @@ def git_commit_graph(repo_path: Path, findings: list[dict]) -> list[dict]:
             "--date=unix",
             "--pretty=format:%H%x09%P%x09%ct%x09%an%x09%s",
             "-n",
-            "120",
+            str(REPOSITORY_MAP_COMMIT_LIMIT),
         ],
         repo_path,
         timeout=45,
@@ -1109,7 +1125,7 @@ def git_branches(repo_path: Path, commits: list[dict]) -> list[dict]:
                 "findings": commit_findings.get(commit_hash, 0),
             }
         )
-    return branches[:40]
+    return branches[:REPOSITORY_MAP_BRANCH_LIMIT]
 
 
 def git_tags(repo_path: Path) -> list[dict]:
@@ -1117,7 +1133,7 @@ def git_tags(repo_path: Path) -> list[dict]:
         [
             "for-each-ref",
             "--sort=-creatordate",
-            "--count=30",
+            f"--count={REPOSITORY_MAP_TAG_LIMIT}",
             "--format=%(refname:short)%09%(objectname)%09%(creatordate:unix)%09%(subject)",
             "refs/tags",
         ],
@@ -1157,7 +1173,7 @@ def github_pull_requests(url: str) -> list[dict]:
         "--state",
         "all",
         "--limit",
-        "30",
+        str(REPOSITORY_MAP_PR_LIMIT),
         "--json",
         "number,title,state,author,headRefName,baseRefName,updatedAt,createdAt,mergedAt,url,isDraft",
     ]

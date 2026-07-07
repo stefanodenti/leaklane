@@ -5,6 +5,7 @@
 ### Added
 
 - Local LM Studio analysis for Repository Intelligence maps, including full-map summaries and selected-node context readings.
+- Repository map consolidation with persisted view state, repository search/sorting, fit-to-view zoom, and visible map coverage limits.
 
 ## v0.2.0-alpha.1 - 2026-07-07
 
