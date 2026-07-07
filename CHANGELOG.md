@@ -4,6 +4,12 @@
 
 ### Added
 
+- Nothing yet.
+
+## v0.2.0-alpha.1 - 2026-07-07
+
+### Added
+
 - Repository Intelligence view with branch, tag, commit, pull request, and Gitleaks finding overlay.
 - Read-only repository map API using temporary filtered clones that are removed after analysis.
 - Repository map cache, graph zoom controls, branch/tag/PR/finding filters, drag-to-pan, and finding detail drill-down.

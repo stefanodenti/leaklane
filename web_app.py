@@ -559,7 +559,7 @@ def health_status() -> dict:
     return {
         "ok": True,
         "service": "leaklane",
-        "version": "0.1.0",
+        "version": "0.2.0-alpha.1",
         "reports_dir": str(REPORT_ROOT),
         "jobs": len(jobs),
         "time": time.time(),

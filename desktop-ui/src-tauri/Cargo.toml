@@ -1,6 +1,6 @@
 [package]
 name = "leaklane"
-version = "0.1.0-alpha.1"
+version = "0.2.0-alpha.1"
 description = "Local secret triage for repository fleets"
 authors = ["NOEVA"]
 edition = "2021"
