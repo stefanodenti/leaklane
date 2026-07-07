@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/stefanodenti/leaklane/releases/tag/v0.2.0-alpha.1"><img alt="Release" src="https://img.shields.io/badge/release-v0.2.0--alpha.1-7ccf9a"></a>
+  <a href="https://github.com/stefanodenti/leaklane/releases/tag/v0.3.0-alpha.1"><img alt="Release" src="https://img.shields.io/badge/release-v0.3.0--alpha.1-7ccf9a"></a>
   <img alt="Local first" src="https://img.shields.io/badge/local--first-yes-9fb7ff">
   <img alt="Desktop" src="https://img.shields.io/badge/desktop-Tauri-ffc857">
   <img alt="AI" src="https://img.shields.io/badge/AI-LM%20Studio-d6b3ff">
@@ -120,7 +120,7 @@ npm run tauri:build
 
 The latest alpha release includes a macOS Apple Silicon DMG:
 
-[Download LeakLane v0.2.0-alpha.1](https://github.com/stefanodenti/leaklane/releases/tag/v0.2.0-alpha.1)
+[Download LeakLane v0.3.0-alpha.1](https://github.com/stefanodenti/leaklane/releases/tag/v0.3.0-alpha.1)
 
 ## Local AI Triage
 
@@ -163,4 +163,4 @@ See `BRAND.md` for the lightweight brand notes.
 
 ## Release Status
 
-`v0.2.0-alpha.1` is a minor alpha focused on Repository Intelligence: branch/tag/PR mapping, Git graph-style navigation, finding overlays, bottom drawer inspection, clickable graph nodes, and a collapsible workspace sidebar. It is useful for local validation and early feedback, but macOS builds are currently unsigned and not notarized.
+`v0.3.0-alpha.1` is a minor alpha focused on persistent Repository Intelligence: saved repository maps, delta refreshes, force regeneration, LM Studio map analysis, backend OpenAPI documentation, and separate app/backend version visibility. It is useful for local validation and early feedback, but macOS builds are currently unsigned and not notarized.

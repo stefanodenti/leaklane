@@ -4,9 +4,17 @@
 
 ### Added
 
+- Nothing yet.
+
+## v0.3.0-alpha.1 - 2026-07-07
+
+### Added
+
 - Local LM Studio analysis for Repository Intelligence maps, including full-map summaries and selected-node context readings.
 - Repository map consolidation with persisted view state, repository search/sorting, fit-to-view zoom, and visible map coverage limits.
 - Persisted repository maps with stored reads, delta updates, force regeneration, and repository-map change summaries.
+- Backend OpenAPI documentation with Swagger UI access from the desktop sidebar.
+- Separate frontend app and backend API version indicators in the primary sidebar.
 
 ## v0.2.0-alpha.1 - 2026-07-07
 
