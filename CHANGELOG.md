@@ -6,6 +6,15 @@
 
 - Nothing yet.
 
+## v0.3.1-alpha.1 - 2026-07-08
+
+### Changed
+
+- Refined the global UI theme with richer light/dark palettes, subtle gradients, texture, and softer depth.
+- Improved sidebar, navigation, dashboard metrics, cards, repository map canvas, and interactive hover/focus states.
+- Added reduced-motion support for the new interface animations.
+- Added a first Reddit launch post draft for community sharing.
+
 ## v0.3.0-alpha.1 - 2026-07-07
 
 ### Added
